@@ -132,13 +132,15 @@ describe("callGemini", () => {
       .rejects.toThrow("Gemini API key not set");
   });
 
-  test("calls the correct Gemini endpoint", async () => {
+  test("calls the correct Gemini endpoint and sends key as header (not URL param)", async () => {
     global.fetch = mockOk({ candidates: [{ content: { parts: [{ text: "Fixed" }] } }] });
     await callGemini("AIza-test", "gemini-2.0-flash", "Fix:", "hello");
-    const url = global.fetch.mock.calls[0][0];
+    const url  = global.fetch.mock.calls[0][0];
+    const opts = global.fetch.mock.calls[0][1];
     expect(url).toContain("generativelanguage.googleapis.com");
     expect(url).toContain("gemini-2.0-flash:generateContent");
-    expect(url).toContain("key=AIza-test");
+    expect(url).not.toContain("key=");
+    expect(opts.headers["x-goog-api-key"]).toBe("AIza-test");
   });
 
   test("strips the 'models/' prefix from model ID in the URL", async () => {

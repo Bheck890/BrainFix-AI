@@ -69,6 +69,10 @@ const PROVIDER_STORAGE_KEYS = [
   "openaiModel", "claudeModel", "geminiModel"
 ];
 
+// The extension calls cloud APIs directly; local providers (Ollama, LM Studio, Jan AI)
+// are desktop-only and are filtered out before every AI dispatch.
+const _EXT_LOCAL_IDS = new Set(["ollama", "lmstudio", "jan"]);
+
 // ── Run from popup (Process Selected Text button) ────────────────────────────
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== "run-from-popup") return;
@@ -92,8 +96,9 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     browser.tabs.sendMessage(tabId, { action: "show-loading", originalText: selectedText });
     try {
+      const cloudProviders = (settings.configuredProviders || []).filter(p => !_EXT_LOCAL_IDS.has(p.id));
       const { result, usedProvider, usedModel } = await callAIWithFallback(
-        settings.configuredProviders, settings.geminiModels, settings, systemPrompt, selectedText
+        cloudProviders, settings.geminiModels, settings, systemPrompt, selectedText
       );
       browser.tabs.sendMessage(tabId, { action: "show-results", originalText: selectedText, results: [result] });
 
@@ -163,11 +168,12 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
   browser.tabs.sendMessage(tab.id, { action: "show-loading", originalText: selectedText });
 
   try {
+    const cloudProviders = (settings.configuredProviders || []).filter(p => !_EXT_LOCAL_IDS.has(p.id));
     const results = [];
     let usedProvider = "", usedModel = "";
     for (let i = 0; i < variants; i++) {
       const r = await callAIWithFallback(
-        settings.configuredProviders, settings.geminiModels, settings, systemPrompt, selectedText
+        cloudProviders, settings.geminiModels, settings, systemPrompt, selectedText
       );
       results.push(r.result);
       usedProvider = r.usedProvider;

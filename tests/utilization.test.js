@@ -534,7 +534,7 @@ describe("callGemini — error handling", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test("includes API key in URL", async () => {
+  test("sends API key as x-goog-api-key header (not in URL)", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -542,8 +542,10 @@ describe("callGemini — error handling", () => {
       })
     });
     await callGemini("AIza-test", "gemini-2.5-flash-lite", "Fix:", "text");
-    const url = global.fetch.mock.calls[0][0];
-    expect(url).toContain("AIza-test");
+    const url  = global.fetch.mock.calls[0][0];
+    const opts = global.fetch.mock.calls[0][1];
+    expect(url).not.toContain("AIza-test");
+    expect(opts.headers["x-goog-api-key"]).toBe("AIza-test");
   });
 });
 

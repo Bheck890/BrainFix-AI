@@ -42,6 +42,14 @@ function makeActivationStorage(deviceId = "test-device-uuid") {
   };
 }
 
+// makeWindow with optional extra storage values (e.g. _demoValidatedAt for offline tests)
+function makeWindowWithExtras(extras = {}, deviceId = "test-device-uuid") {
+  return {
+    appGet: jest.fn().mockResolvedValue({ _deviceId: deviceId, ...extras }),
+    appSet: jest.fn().mockResolvedValue(),
+  };
+}
+
 // Returns a signed-ok response from the proxy (ok:true so _apiCall doesn't throw).
 function mockProxyOk(payload) {
   global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => payload });
@@ -173,11 +181,18 @@ describe("checkLicensePeriodically", () => {
     expect(result).toEqual({ revoked: true });
   });
 
-  test("returns null on network error (benefit of the doubt)", async () => {
+  test("returns null on network error within 30 days of last check (benefit of the doubt)", async () => {
     const storage = makeStorage(Date.now() - DAY_MS - 1000);
     global.fetch = jest.fn().mockRejectedValue(new Error("offline"));
     const result = await checkLicensePeriodically("a@b.com", "KEY", storage);
     expect(result).toBeNull();
+  });
+
+  test("returns revoked when network fails and last confirmed check was over 30 days ago", async () => {
+    const storage = makeStorage(Date.now() - 31 * DAY_MS);
+    global.fetch = jest.fn().mockRejectedValue(new Error("offline"));
+    const result = await checkLicensePeriodically("a@b.com", "KEY", storage);
+    expect(result).toEqual({ revoked: true });
   });
 
   test("retries after 1 hour following a network failure", async () => {
@@ -285,11 +300,27 @@ describe("verifyDemoMode — full flow", () => {
     expect(result.error).toMatch(/slots are full/);
   });
 
-  test("returns offline:true on network error", async () => {
+  test("rejects offline activation when server has never validated this device", async () => {
+    mockProxyFail();
+    const result = await verifyDemoMode("0000-0000-0000-1792");
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/connection/i);
+  });
+
+  test("grants offline access when server previously validated this device (_demoValidatedAt set)", async () => {
+    global.window = makeWindowWithExtras({ _demoValidatedAt: Date.now() - 1000 });
     mockProxyFail();
     const result = await verifyDemoMode("0000-0000-0000-1792");
     expect(result.valid).toBe(true);
     expect(result.offline).toBe(true);
+  });
+
+  test("stamps _demoValidatedAt in storage on successful online activation", async () => {
+    const win = makeWindowWithExtras();
+    global.window = win;
+    mockProxyOk({ status: "ok", license_id: "demo-uuid" });
+    await verifyDemoMode("0000-0000-0000-1792");
+    expect(win.appSet).toHaveBeenCalledWith(expect.objectContaining({ _demoValidatedAt: expect.any(Number) }));
   });
 });
 

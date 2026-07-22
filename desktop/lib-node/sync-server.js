@@ -17,11 +17,21 @@ const SYNC_KEYS = new Set([
   "licenseEmail", "licenseKey"
 ]);
 
+function _isValidProvider(p) {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return false;
+  if (typeof p.id !== "string" || !p.id) return false;
+  if ("baseUrl" in p && typeof p.baseUrl !== "string") return false;
+  if ("apiKey" in p && p.apiKey !== null && typeof p.apiKey !== "string") return false;
+  if ("model"  in p && typeof p.model  !== "string") return false;
+  return true;
+}
+
 // Validates that a value has the correct type for its sync key.
 // Using a switch keeps this as one testable function instead of 16 arrow functions.
 function validateSyncValue(key, val) {
   switch (key) {
     case "configuredProviders":
+      return Array.isArray(val) && val.every(_isValidProvider);
     case "geminiModels":
     case "customPrompts":
     case "actionSettings":
@@ -54,11 +64,15 @@ function startSyncServer(encStore, port = PORT) {
       return;
     }
 
-    // /ping — public, no token needed; returns session token + syncMeta for timestamp comparison
+    // /ping — public, no token needed; returns syncMeta for timestamp comparison.
+    // Session token is only returned to extension origins — browsers enforce this header,
+    // so non-browser local processes cannot obtain it and therefore cannot call /settings.
     if (req.url === "/ping" && req.method === "GET") {
+      const pingOrigin = req.headers["origin"] || "";
+      const isExtension = /^(chrome-extension|moz-extension):\/\//.test(pingOrigin);
       const syncMeta = encStore.get("syncMeta") || null;
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ token: SESSION_TOKEN, syncMeta }));
+      res.end(JSON.stringify({ token: isExtension ? SESSION_TOKEN : null, syncMeta }));
       return;
     }
 

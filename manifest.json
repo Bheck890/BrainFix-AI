@@ -42,9 +42,7 @@
     "https://models.inference.ai.azure.com/*"
   ],
   "optional_host_permissions": [
-    "http://127.0.0.1:47391/*",
-    "http://127.0.0.1:11434/*",
-    "http://localhost:11434/*"
+    "http://127.0.0.1:47391/*"
   ],
   "options_ui": {
     "page": "options/options.html",

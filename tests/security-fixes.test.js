@@ -289,14 +289,9 @@ describe("L13 — optional_host_permissions narrowed (FIXED)", () => {
     expect(ohp).not.toContain("http://*/*");
   });
 
-  test("manifest optional_host_permissions contains only specific loopback entries", () => {
+  test("manifest optional_host_permissions contains only the sync-server entry (local AI is desktop-only)", () => {
     const ohp = manifest.optional_host_permissions || [];
-    // Only the sync server and Ollama local ports are legitimate
-    const allowed = new Set([
-      "http://127.0.0.1:47391/*",
-      "http://127.0.0.1:11434/*",
-      "http://localhost:11434/*"
-    ]);
+    const allowed = new Set(["http://127.0.0.1:47391/*"]);
     for (const entry of ohp) {
       expect(allowed.has(entry)).toBe(true);
     }
@@ -307,10 +302,12 @@ describe("L13 — optional_host_permissions narrowed (FIXED)", () => {
     expect(ohp).toContain("http://127.0.0.1:47391/*");
   });
 
-  test("manifest optional_host_permissions includes Ollama entries", () => {
+  test("manifest optional_host_permissions does NOT include local AI ports (desktop-only)", () => {
     const ohp = manifest.optional_host_permissions || [];
-    expect(ohp).toContain("http://127.0.0.1:11434/*");
-    expect(ohp).toContain("http://localhost:11434/*");
+    expect(ohp).not.toContain("http://127.0.0.1:11434/*");
+    expect(ohp).not.toContain("http://localhost:11434/*");
+    expect(ohp).not.toContain("http://localhost:1234/*");
+    expect(ohp).not.toContain("http://localhost:1337/*");
   });
 });
 

@@ -37,6 +37,8 @@ function request({ method = "GET", path = "/ping", token = null, body = null, or
 
 // ── test suite ─────────────────────────────────────────────────────────────────
 
+const EXT_ORIGIN = "chrome-extension://test-extension-id";
+
 describe("sync-server", () => {
   let server;
   let sessionToken;
@@ -62,7 +64,8 @@ describe("sync-server", () => {
       server.once("error",     reject);
     });
 
-    const ping = await request({ path: "/ping" });
+    // Extension origins receive the session token; use it for all authenticated tests
+    const ping = await request({ path: "/ping", origin: EXT_ORIGIN });
     sessionToken = JSON.parse(ping.body).token;
   });
 
@@ -91,8 +94,8 @@ describe("sync-server", () => {
 
   // ── GET /ping ─────────────────────────────────────────────────────────────────
 
-  test("GET /ping returns 200 with token and syncMeta — no auth needed", async () => {
-    const res = await request({ path: "/ping" });
+  test("GET /ping with extension origin returns token and syncMeta", async () => {
+    const res = await request({ path: "/ping", origin: EXT_ORIGIN });
     expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
     expect(typeof json.token).toBe("string");
@@ -100,10 +103,18 @@ describe("sync-server", () => {
     expect(json.syncMeta).toEqual({ lastChanged: "2026-05-24T00:00:00.000Z" });
   });
 
+  test("GET /ping without extension origin returns null token (prevents local-process spoofing)", async () => {
+    const res  = await request({ path: "/ping" });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.token).toBeNull();
+    expect(json.syncMeta).toBeDefined(); // syncMeta is still public
+  });
+
   test("GET /ping with no syncMeta in store returns syncMeta: null", async () => {
     const original = mockStore._data.syncMeta;
     mockStore._data.syncMeta = undefined;
-    const res  = await request({ path: "/ping" });
+    const res  = await request({ path: "/ping", origin: EXT_ORIGIN });
     const json = JSON.parse(res.body);
     expect(json.syncMeta).toBeNull();
     mockStore._data.syncMeta = original;
@@ -127,8 +138,6 @@ describe("sync-server", () => {
   });
 
   // ── GET /settings ─────────────────────────────────────────────────────────────
-
-  const EXT_ORIGIN = "chrome-extension://test-extension-id";
 
   test("GET /settings returns only defined SYNC_KEY values", async () => {
     const res  = await request({ path: "/settings", token: sessionToken, origin: EXT_ORIGIN });
