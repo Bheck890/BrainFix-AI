@@ -42,7 +42,7 @@ jobs:
       - name: Write license env file
         run: |
           mkdir -p ETC
-          echo "LICENSE_CIPHER_KEY=${{ secrets.LICENSE_CIPHER_KEY }}" > ETC/brainfix-ai.env
+          echo "REQUEST_SIGN_KEY=0000000000000000000000000000000000000000000000000000000000000000" > ETC/brainfix-ai.env
 
       - name: Build Firefox extension
         run: npm run build:firefox
@@ -126,7 +126,7 @@ jobs:
         run: npm run dist:test
         working-directory: desktop
         env:
-          LICENSE_CIPHER_KEY: ${{ secrets.LICENSE_CIPHER_KEY }}
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
       - name: Zip TEST ONLY EXE
         if: github.ref == 'refs/heads/main'
@@ -152,7 +152,7 @@ jobs:
         run: npm run dist:win
         working-directory: desktop
         env:
-          LICENSE_CIPHER_KEY: ${{ secrets.LICENSE_CIPHER_KEY }}
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
       - name: Upload production installer
         if: github.ref != 'refs/heads/main'

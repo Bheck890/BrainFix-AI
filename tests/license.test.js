@@ -1,13 +1,5 @@
-const fs   = require("fs");
-const path = require("path");
 const { verifyWithGumroad, checkLicensePeriodically, isProUnlocked, isDemoMode,
-        verifyDemoMode, verifyCorpMode, cacheLicenseData } = require("../lib/license");
-
-const HAS_KEY      = !!process.env.LICENSE_CIPHER_KEY;
-const realDownloads = JSON.parse(fs.readFileSync(path.join(__dirname, "../legal/downloads.json"), "utf8"));
-
-// describeWithKey: runs only when LICENSE_CIPHER_KEY is available (ETC folder / CI secret)
-const describeWithKey = HAS_KEY ? describe : describe.skip;
+        verifyDemoMode, verifyCorpMode } = require("../lib/license");
 
 // ── isProUnlocked ──────────────────────────────────────────────────────────────
 
@@ -33,151 +25,100 @@ describe("isProUnlocked", () => {
   });
 });
 
-// ── helpers ────────────────────────────────────────────────────────────────────
+// ── shared helpers ─────────────────────────────────────────────────────────────
 
-function makePurchase(email, overrides = {}) {
-  return { email, refunded: false, chargebacked: false, ...overrides };
+function makeWindow(deviceId = "test-device-uuid") {
+  return {
+    appGet: jest.fn().mockResolvedValue({ _deviceId: deviceId }),
+    appSet: jest.fn().mockResolvedValue(),
+  };
 }
 
-// Mock fetch for two-call flow (check then activate).
-function mockFetchTwice(checkData, activateData) {
-  global.fetch = jest.fn()
-    .mockResolvedValueOnce({ json: async () => checkData })
-    .mockResolvedValueOnce({ json: async () => activateData });
+// Storage object that provides a known fingerprint -- used by verifyWithGumroad.
+function makeActivationStorage(deviceId = "test-device-uuid") {
+  return {
+    appGet: jest.fn().mockResolvedValue({ _deviceId: deviceId }),
+    appSet: jest.fn().mockResolvedValue(),
+  };
 }
 
-// Mock fetch for one-call flow (fails early — no activation call needed).
-function mockFetchOnce(data) {
-  global.fetch = jest.fn().mockResolvedValue({ json: async () => data });
+// Returns a signed-ok response from the proxy (ok:true so _apiCall doesn't throw).
+function mockProxyOk(payload) {
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => payload });
+}
+
+function mockProxyFail() {
+  global.fetch = jest.fn().mockRejectedValue(new Error("offline"));
 }
 
 // ── verifyWithGumroad ──────────────────────────────────────────────────────────
+// Gumroad is now called server-side via the proxy -- the extension never contacts
+// api.gumroad.com directly. Tests verify the proxy response is forwarded correctly.
 
 describe("verifyWithGumroad", () => {
   afterEach(() => {
     global.fetch = undefined;
   });
 
-  // ── Success — new device activation ─────────────────────────────────────────
-
-  test("activates a new device: two fetch calls, returns valid:true", async () => {
-    const purchase = makePurchase("User@Example.com");
-    mockFetchTwice(
-      { success: true, uses: 0, purchase },
-      { success: true, uses: 1, purchase }
-    );
+  test("returns error when fingerprint not available (no storage, no window)", async () => {
     const result = await verifyWithGumroad("user@example.com", "ABC-123");
-    expect(result).toEqual({ valid: true });
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ valid: false, error: "Could not identify this device." });
   });
 
-  test("email comparison is case-insensitive", async () => {
-    const purchase = makePurchase("USER@EXAMPLE.COM");
-    mockFetchTwice(
-      { success: true, uses: 0, purchase },
-      { success: true, uses: 1, purchase }
-    );
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
-    expect(result).toEqual({ valid: true });
-  });
-
-  test("allows activation when uses is just below the limit (4 of 5)", async () => {
-    const purchase = makePurchase("user@example.com");
-    mockFetchTwice(
-      { success: true, uses: 4, purchase },
-      { success: true, uses: 5, purchase }
-    );
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
-    expect(result).toEqual({ valid: true });
-  });
-
-  // ── Already activated on this device ────────────────────────────────────────
-
-  test("skips activation call when device already activated with same key", async () => {
-    const appGet = jest.fn().mockResolvedValue({ deviceActivated: "ABC-123" });
-    const appSet = jest.fn();
-    mockFetchOnce({ success: true, uses: 2, purchase: makePurchase("user@example.com") });
-    const result = await verifyWithGumroad("user@example.com", "ABC-123", { appGet, appSet });
+  test("returns valid:true when proxy confirms license", async () => {
+    mockProxyOk({ valid: true });
+    const result = await verifyWithGumroad("user@example.com", "ABC-123", makeActivationStorage());
     expect(result).toEqual({ valid: true });
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(appSet).not.toHaveBeenCalled();
   });
 
-  // ── Device limit ─────────────────────────────────────────────────────────────
+  test("stamps deviceActivated and timestamps on success", async () => {
+    const storage = makeActivationStorage();
+    mockProxyOk({ valid: true });
+    await verifyWithGumroad("user@example.com", "ABC-123", storage);
+    expect(storage.appSet).toHaveBeenCalledWith(expect.objectContaining({ deviceActivated: "ABC-123" }));
+  });
 
-  test("rejects when device limit of 5 is reached", async () => {
-    mockFetchOnce({ success: true, uses: 5, purchase: makePurchase("user@example.com") });
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
+  test("returns error when proxy says invalid key", async () => {
+    mockProxyOk({ valid: false, error: "Invalid license key" });
+    const result = await verifyWithGumroad("user@example.com", "BAD-KEY", makeActivationStorage());
+    expect(result).toEqual({ valid: false, error: "Invalid license key" });
+  });
+
+  test("returns error when proxy says wrong email", async () => {
+    mockProxyOk({ valid: false, error: "Wrong email for this license key" });
+    const result = await verifyWithGumroad("user@example.com", "ABC-123", makeActivationStorage());
+    expect(result).toEqual({ valid: false, error: "Wrong email for this license key" });
+  });
+
+  test("returns error when proxy says license refunded", async () => {
+    mockProxyOk({ valid: false, error: "This license has been refunded and is no longer valid." });
+    const result = await verifyWithGumroad("user@example.com", "ABC-123", makeActivationStorage());
     expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/Maximum devices reached/);
-    expect(result.error).toMatch(/northportlabs@gmail\.com/);
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(result.error).toMatch(/refunded/);
   });
 
-  test("rejects when uses exceeds 5", async () => {
-    mockFetchOnce({ success: true, uses: 9, purchase: makePurchase("user@example.com") });
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
-    expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/Maximum devices reached/);
-  });
-
-  // ── Refund / chargeback ──────────────────────────────────────────────────────
-
-  test("rejects refunded license", async () => {
-    mockFetchOnce({ success: true, uses: 1, purchase: makePurchase("user@example.com", { refunded: true }) });
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
-    expect(result).toEqual({ valid: false, error: "This license has been refunded and is no longer valid." });
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-  });
-
-  test("rejects chargebacked license", async () => {
-    mockFetchOnce({ success: true, uses: 1, purchase: makePurchase("user@example.com", { chargebacked: true }) });
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
+  test("returns error when proxy says chargebacked", async () => {
+    mockProxyOk({ valid: false, error: "This license has a chargeback on record. Contact northportlabs@gmail.com." });
+    const result = await verifyWithGumroad("user@example.com", "ABC-123", makeActivationStorage());
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/chargeback/);
     expect(result.error).toMatch(/northportlabs@gmail\.com/);
   });
 
-  // ── Standard failures ────────────────────────────────────────────────────────
-
-  test("returns valid:false with wrong-email error when email mismatches", async () => {
-    mockFetchOnce({ success: true, uses: 0, purchase: makePurchase("other@example.com") });
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
-    expect(result).toEqual({ valid: false, error: "Wrong email for this license key" });
+  test("returns error when proxy says device limit reached", async () => {
+    mockProxyOk({ valid: false, error: "Maximum devices reached. Contact northportlabs@gmail.com to reset." });
+    const result = await verifyWithGumroad("user@example.com", "ABC-123", makeActivationStorage());
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/Maximum devices reached/);
+    expect(result.error).toMatch(/northportlabs@gmail\.com/);
   });
 
-  test("returns valid:false with invalid-key error when success=false", async () => {
-    mockFetchOnce({ success: false });
-    const result = await verifyWithGumroad("user@example.com", "BAD-KEY");
-    expect(result).toEqual({ valid: false, error: "Invalid license key" });
-  });
-
-  test("returns valid:false with network error when fetch throws", async () => {
+  test("returns connection error on network failure", async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error("Network failure"));
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
-    expect(result).toEqual({ valid: false, error: "Could not reach Gumroad. Check your connection." });
-  });
-
-  test("second activation call failing returns a retry error", async () => {
-    const purchase = makePurchase("user@example.com");
-    mockFetchTwice(
-      { success: true, uses: 0, purchase },
-      { success: false }
-    );
-    const result = await verifyWithGumroad("user@example.com", "ABC-123");
-    expect(result).toEqual({ valid: false, error: "Could not activate this device. Please try again." });
-  });
-
-  test("stamps deviceActivated and timestamps on successful new-device activation", async () => {
-    const appSet = jest.fn().mockResolvedValue();
-    const appGet = jest.fn().mockResolvedValue({ deviceActivated: null });
-    const purchase = makePurchase("user@example.com");
-    mockFetchTwice(
-      { success: true, uses: 0, purchase },
-      { success: true, uses: 1, purchase }
-    );
-    await verifyWithGumroad("user@example.com", "ABC-123", { appGet, appSet });
-    expect(appSet).toHaveBeenCalledWith(expect.objectContaining({ deviceActivated: "ABC-123" }));
+    const result = await verifyWithGumroad("user@example.com", "ABC-123", makeActivationStorage());
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/Could not reach activation server/);
   });
 });
 
@@ -205,7 +146,6 @@ describe("checkLicensePeriodically", () => {
   });
 
   test("skips check when last attempt was a network failure within 1 hour", async () => {
-    // lastCheck is old (>24h), but lastAttempt was recent (<1h)
     const storage = makeStorage(0, Date.now() - 30 * 60 * 1000); // attempted 30 min ago
     const result = await checkLicensePeriodically("a@b.com", "KEY", storage);
     expect(result).toBeNull();
@@ -217,29 +157,18 @@ describe("checkLicensePeriodically", () => {
     expect(result).toBeNull();
   });
 
-  test("runs check and returns valid:true when license is still valid", async () => {
-    const storage = makeStorage(Date.now() - DAY_MS - 1000); // last check was >24h ago
-    global.fetch = jest.fn().mockResolvedValue({
-      json: async () => ({ success: true, purchase: { refunded: false, chargebacked: false } })
-    });
+  test("runs check and returns valid:true when proxy confirms license", async () => {
+    const storage = makeStorage(Date.now() - DAY_MS - 1000);
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ valid: true }) });
     const result = await checkLicensePeriodically("a@b.com", "KEY", storage);
     expect(result).toEqual({ valid: true });
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(storage.appSet).toHaveBeenCalled();
   });
 
-  test("returns revoked:true when license is refunded", async () => {
+  test("returns revoked:true when proxy says license is no longer valid", async () => {
     const storage = makeStorage(Date.now() - DAY_MS - 1000);
-    global.fetch = jest.fn().mockResolvedValue({
-      json: async () => ({ success: true, purchase: { refunded: true, chargebacked: false } })
-    });
-    const result = await checkLicensePeriodically("a@b.com", "KEY", storage);
-    expect(result).toEqual({ revoked: true });
-  });
-
-  test("returns revoked:true when Gumroad says success:false", async () => {
-    const storage = makeStorage(Date.now() - DAY_MS - 1000);
-    global.fetch = jest.fn().mockResolvedValue({ json: async () => ({ success: false }) });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ valid: false }) });
     const result = await checkLicensePeriodically("a@b.com", "KEY", storage);
     expect(result).toEqual({ revoked: true });
   });
@@ -252,32 +181,24 @@ describe("checkLicensePeriodically", () => {
   });
 
   test("retries after 1 hour following a network failure", async () => {
-    // lastCheck old, lastAttempt was >1h ago (so retry is due)
     const storage = makeStorage(0, Date.now() - HOUR_MS - 1000);
-    global.fetch = jest.fn().mockResolvedValue({
-      json: async () => ({ success: true, purchase: { refunded: false, chargebacked: false } })
-    });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ valid: true }) });
     const result = await checkLicensePeriodically("a@b.com", "KEY", storage);
     expect(result).toEqual({ valid: true });
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  test("returns revoked:true when license is chargebacked", async () => {
+  test("returns revoked:true when license is chargebacked (1 ms)", async () => {
     const storage = makeStorage(Date.now() - DAY_MS - 1000);
-    global.fetch = jest.fn().mockResolvedValue({
-      json: async () => ({ success: true, purchase: { refunded: false, chargebacked: true } })
-    });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ valid: false }) });
     const result = await checkLicensePeriodically("a@b.com", "KEY", storage);
     expect(result).toEqual({ revoked: true });
   });
 
   test("stamps lastLicenseAttempt before fetch (crash safety)", async () => {
     const storage = makeStorage(Date.now() - DAY_MS - 1000);
-    global.fetch = jest.fn().mockResolvedValue({
-      json: async () => ({ success: true, purchase: { refunded: false, chargebacked: false } })
-    });
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ valid: true }) });
     await checkLicensePeriodically("a@b.com", "KEY", storage);
-    // appSet should have been called at least twice: once before fetch, once after
     expect(storage.appSet).toHaveBeenCalledTimes(2);
     expect(storage.appSet).toHaveBeenNthCalledWith(1, expect.objectContaining({ lastLicenseAttempt: expect.any(Number) }));
   });
@@ -317,101 +238,69 @@ describe("isProUnlocked — demo and corp modes", () => {
   });
 });
 
-// ── verifyDemoMode — paths that never need the cipher key ─────────────────────
+// ── verifyDemoMode — no window context ────────────────────────────────────────
 
-describe("verifyDemoMode — network failure paths", () => {
-  beforeEach(() => cacheLicenseData(null));
-  afterEach(() => { global.fetch = undefined; cacheLicenseData(null); });
+describe("verifyDemoMode — no window context", () => {
+  afterEach(() => { global.fetch = undefined; });
 
-  test("returns error when downloads fetch fails and no cache", async () => {
-    global.fetch = jest.fn().mockRejectedValue(new Error("offline"));
+  test("returns error when window is not available (no fingerprint)", async () => {
     const result = await verifyDemoMode("0000-0000-0000-1792");
     expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/Could not reach/);
+    expect(result.error).toMatch(/Could not identify/);
   });
 });
 
-// ── verifyDemoMode — full flow (only runs when LICENSE_CIPHER_KEY is available) ─
+// ── verifyDemoMode — proxy-based full flow ────────────────────────────────────
 
-function makeWindow(deviceId = "test-device-uuid") {
-  return {
-    appGet: jest.fn().mockResolvedValue({ _deviceId: deviceId }),
-    appSet: jest.fn().mockResolvedValue(),
-  };
-}
+describe("verifyDemoMode — full flow", () => {
+  beforeEach(() => { global.window = makeWindow(); });
+  afterEach(() => { global.fetch = undefined; global.window = undefined; });
 
-function mockSbOk(payload) {
-  global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => payload });
-}
-
-function mockSbFail() {
-  global.fetch = jest.fn().mockRejectedValue(new Error("offline"));
-}
-
-describeWithKey("verifyDemoMode — full flow (requires LICENSE_CIPHER_KEY)", () => {
-  beforeEach(() => {
-    cacheLicenseData(realDownloads);
-    global.window = makeWindow();
-  });
-  afterEach(() => {
-    global.fetch = undefined;
-    global.window = undefined;
-    cacheLicenseData(null);
-  });
-
-  test("rejects wrong demo code", async () => {
+  test("rejects wrong demo code when proxy says not_found", async () => {
+    mockProxyOk({ status: "not_found" });
     const result = await verifyDemoMode("0000-0000-0000-9999");
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/Invalid/);
-    expect(global.fetch).toBeUndefined(); // no network call for wrong code
   });
 
-  test("accepts correct demo code — Supabase returns ok", async () => {
-    mockSbOk({ status: "ok", id: "demo-uuid", company_name: "Demo", max_seats: 10 });
+  test("accepts correct demo code — proxy returns ok", async () => {
+    mockProxyOk({ status: "ok", license_id: "demo-uuid" });
     const result = await verifyDemoMode("0000-0000-0000-1792");
     expect(result.valid).toBe(true);
     expect(result.mode).toBe("demo");
     expect(result.corpLicenseId).toBe("demo-uuid");
-    expect(result.sbUrl).toBeTruthy();
-    expect(result.sbKey).toBeTruthy();
   });
 
-  test("returns revoked error when Supabase says revoked", async () => {
-    mockSbOk({ status: "revoked" });
+  test("returns revoked error when proxy says revoked", async () => {
+    mockProxyOk({ status: "revoked" });
     const result = await verifyDemoMode("0000-0000-0000-1792");
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/Access has ended/);
   });
 
-  test("returns full-slots error when Supabase says full or rate_limited", async () => {
-    mockSbOk({ status: "full", company_name: "Demo" });
+  test("returns full-slots error when proxy says full or rate_limited", async () => {
+    mockProxyOk({ status: "full" });
     const result = await verifyDemoMode("0000-0000-0000-1792");
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/slots are full/);
   });
 
-  test("returns offline:true on network error after code validated", async () => {
-    mockSbFail();
+  test("returns offline:true on network error", async () => {
+    mockProxyFail();
     const result = await verifyDemoMode("0000-0000-0000-1792");
     expect(result.valid).toBe(true);
     expect(result.offline).toBe(true);
   });
 });
 
-// ── verifyCorpMode — full flow (only runs when LICENSE_CIPHER_KEY is available) ─
+// ── verifyCorpMode — proxy-based full flow ────────────────────────────────────
 
-describeWithKey("verifyCorpMode — full flow (requires LICENSE_CIPHER_KEY)", () => {
-  beforeEach(() => {
-    cacheLicenseData(realDownloads);
-    global.window = makeWindow();
-  });
-  afterEach(() => {
-    global.fetch = undefined;
-    global.window = undefined;
-    cacheLicenseData(null);
-  });
+describe("verifyCorpMode — full flow", () => {
+  beforeEach(() => { global.window = makeWindow(); });
+  afterEach(() => { global.fetch = undefined; global.window = undefined; });
 
-  test("returns corpNotFound when code does not match any corp slot", async () => {
+  test("returns corpNotFound when proxy says not_found", async () => {
+    mockProxyOk({ status: "not_found" });
     const result = await verifyCorpMode("user@company.com", "0000-0000-0000-9999");
     expect(result.valid).toBe(false);
     expect(result.corpNotFound).toBe(true);
@@ -423,53 +312,44 @@ describeWithKey("verifyCorpMode — full flow (requires LICENSE_CIPHER_KEY)", ()
     expect(result.error).toMatch(/company email/);
   });
 
-  test("accepts matching corp code — Supabase returns ok", async () => {
-    mockSbOk({ status: "ok", id: "corp-uuid", company_name: "bheckService", max_seats: 5 });
+  test("accepts matching corp code — proxy returns ok", async () => {
+    mockProxyOk({ status: "ok", license_id: "corp-uuid" });
     const result = await verifyCorpMode("bheckservice@gmail.com", "0000-0000-0000-6393");
     expect(result.valid).toBe(true);
     expect(result.mode).toBe("corp");
     expect(result.corpLicenseId).toBe("corp-uuid");
   });
 
-  test("returns error (not corpNotFound) on network failure after code matched", async () => {
-    mockSbFail();
+  test("returns corpNotFound on network failure", async () => {
+    mockProxyFail();
     const result = await verifyCorpMode("bheckservice@gmail.com", "0000-0000-0000-6393");
     expect(result.valid).toBe(false);
-    expect(result.corpNotFound).toBeUndefined();
-    expect(result.error).toMatch(/Could not reach/);
+    expect(result.corpNotFound).toBe(true);
   });
 
-  test("returns seats-full error when Supabase says full", async () => {
-    mockSbOk({ status: "full", company_name: "bheckService" });
+  test("returns seats-full error when proxy says full", async () => {
+    mockProxyOk({ status: "full" });
     const result = await verifyCorpMode("bheckservice@gmail.com", "0000-0000-0000-6393");
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/No seats available/);
-    expect(result.error).toMatch(/bheckService/);
   });
 
-  test("returns rate-limited error when Supabase says rate_limited", async () => {
-    mockSbOk({ status: "rate_limited", company_name: "bheckService" });
+  test("returns rate-limited error when proxy says rate_limited", async () => {
+    mockProxyOk({ status: "rate_limited" });
     const result = await verifyCorpMode("bheckservice@gmail.com", "0000-0000-0000-6393");
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/Too many activation attempts/);
   });
 
-  test("returns revoked error when Supabase says revoked", async () => {
-    mockSbOk({ status: "revoked" });
+  test("returns revoked error when proxy says revoked", async () => {
+    mockProxyOk({ status: "revoked" });
     const result = await verifyCorpMode("bheckservice@gmail.com", "0000-0000-0000-6393");
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/revoked/);
   });
 
-  test("returns not-found error when Supabase says not_found (domain mismatch)", async () => {
-    mockSbOk({ status: "not_found" });
-    const result = await verifyCorpMode("wrong@otherdomain.com", "0000-0000-0000-6393");
-    expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/No license found/);
-  });
-
   test("email domain comparison is case-insensitive", async () => {
-    mockSbOk({ status: "ok", id: "corp-uuid", company_name: "bheckService", max_seats: 5 });
+    mockProxyOk({ status: "ok", license_id: "corp-uuid" });
     const result = await verifyCorpMode("BHeckService@Gmail.COM", "0000-0000-0000-6393");
     expect(result.valid).toBe(true);
   });

@@ -20,7 +20,7 @@ const store = new Store({ name: "thought-tidy-settings" });
 // values so migration and getters are safe to call repeatedly.
 
 const ENC_PREFIX = "enc1:";
-const _SENSITIVE = new Set(["openaiKey", "claudeKey", "geminiKey", "licenseEmail", "licenseKey", "_sbKey"]);
+const _SENSITIVE = new Set(["openaiKey", "claudeKey", "geminiKey", "licenseEmail", "licenseKey"]);
 const _SYNC_KEYS = new Set([
   "configuredProviders", "geminiModels",
   "openaiKey", "claudeKey", "geminiKey",
@@ -105,18 +105,18 @@ function migrateToEncryptedKeys(raw) {
 let encStore = null;
 const isDev = process.argv.includes("--dev");
 
-// Runtime cipher key — read from env var or (dev only) ETC/brainfix-ai.env.
+// Runtime sign key -- read from env var or (dev only) ETC/brainfix-ai.env.
 // afterPack injects this into lib/license.js at build time; this is a fallback
 // for dev builds where the env var wasn't set during the build.
 function _readCipherKey() {
-  if (process.env.LICENSE_CIPHER_KEY) return process.env.LICENSE_CIPHER_KEY;
+  if (process.env.REQUEST_SIGN_KEY) return process.env.REQUEST_SIGN_KEY;
   if (app.isPackaged) return null; // installed build must rely on afterPack injection
   try {
     const etcFile = path.join(__dirname, "..", "ETC", "brainfix-ai.env");
     if (!fs.existsSync(etcFile)) return null;
     for (const line of fs.readFileSync(etcFile, "utf8").split("\n")) {
       const eq = line.indexOf("=");
-      if (eq > 0 && line.slice(0, eq).trim() === "LICENSE_CIPHER_KEY")
+      if (eq > 0 && line.slice(0, eq).trim() === "REQUEST_SIGN_KEY")
         return line.slice(eq + 1).trim();
     }
   } catch {}
