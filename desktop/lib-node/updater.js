@@ -53,7 +53,7 @@ async function checkNow(store) {
   if (!latest) return null;
 
   const github_url = typeof data.github_url === 'string' &&
-    /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(data.github_url)
+    /^https:\/\/github\.com\/northpandalabs\/Thought-Tidy$/.test(data.github_url)
     ? data.github_url : null;
 
   const current   = app.getVersion();

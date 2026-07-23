@@ -81,6 +81,7 @@ function makeBackupHandlers(dialog, fs, nodePath) {
       });
       if (result.canceled || !result.filePaths.length) return null;
       try {
+        if (fs.statSync(result.filePaths[0]).size > _MAX_BACKUP_BYTES) return null;
         return fs.readFileSync(result.filePaths[0], "utf8");
       } catch {
         return null;

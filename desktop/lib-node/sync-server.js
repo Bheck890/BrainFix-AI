@@ -17,7 +17,10 @@ const SYNC_KEYS = new Set([
   "licenseEmail", "licenseKey"
 ]);
 
-const _SYNC_SSRF_BLOCKED = /^(0\.0\.0\.0|169\.254\.\d+\.\d+|168\.63\.129\.16|metadata\.google\.internal|fe80:)/i;
+// Covers AWS (169.254.169.254), Azure (168.63.129.16), GCP hostname, Alibaba (100.100.100.200),
+// AWS IPv6 IMDS (fd00:ec2::), IPv6 link-local (fe80::), and IPv6 loopback (::1).
+// Brackets are stripped from URL.hostname before testing so [::1] and ::1 both match.
+const _SYNC_SSRF_BLOCKED = /^(::1$|0\.0\.0\.0$|169\.254\.\d+\.\d+|100\.100\.100\.200$|168\.63\.129\.16$|metadata\.google\.internal$|fe80:|fd00:ec2:)/i;
 
 function _isValidProvider(p) {
   if (!p || typeof p !== "object" || Array.isArray(p)) return false;
@@ -28,7 +31,8 @@ function _isValidProvider(p) {
       try {
         const u = new URL(p.baseUrl);
         if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-        if (_SYNC_SSRF_BLOCKED.test(u.hostname)) return false;
+        const _h = u.hostname.replace(/^\[|]$/g, ""); // strip IPv6 brackets
+        if (_SYNC_SSRF_BLOCKED.test(_h)) return false;
       } catch { return false; }
     }
   }
@@ -42,11 +46,12 @@ function _isValidProvider(p) {
 function validateSyncValue(key, val) {
   switch (key) {
     case "configuredProviders":
-      return Array.isArray(val) && val.every(_isValidProvider);
+      return Array.isArray(val) && val.length <= 100 && val.every(_isValidProvider);
     case "geminiModels":
+      return Array.isArray(val) && val.length <= 100;
     case "customPrompts":
     case "actionSettings":
-      return Array.isArray(val);
+      return Array.isArray(val) && val.length <= 200;
     case "variants":
       return typeof val === "number" && Number.isFinite(val);
     case "profileEnabled":
@@ -129,9 +134,11 @@ function startSyncServer(encStore, port = PORT) {
     // POST /settings — receives plaintext settings from extension, stores encrypted via encStore.set
     if (req.url === "/settings" && req.method === "POST") {
       let body = "";
+      let bodyBytes = 0;
       req.on("data", chunk => {
+        bodyBytes += chunk.length; // chunk is a Buffer — .length is bytes, not chars
+        if (bodyBytes > 1_000_000) { req.destroy(); return; }
         body += chunk;
-        if (body.length > 1_000_000) req.destroy();
       });
       req.on("end", () => {
         try {

@@ -371,6 +371,62 @@ describe("sync-server", () => {
       body: { settings: { actionSettings: [] } } });
     expect(Array.isArray(mockStore._data.actionSettings)).toBe(true);
   });
+
+  // ── extended SSRF coverage (IPv6 and additional cloud metadata IPs) ───────────
+
+  test("POST /settings rejects provider with IPv6 loopback baseUrl ([::1])", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "http://[::1]/metadata" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with Alibaba Cloud IMDS baseUrl (100.100.100.200)", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "http://100.100.100.200/latest/meta-data" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with AWS IPv6 IMDS baseUrl ([fd00:ec2::254])", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "http://[fd00:ec2::254]/latest/meta-data" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  // ── array length caps ─────────────────────────────────────────────────────────
+
+  test("POST /settings rejects configuredProviders exceeding 100 items", async () => {
+    mockStore._data.configuredProviders = [];
+    const tooMany = Array.from({ length: 101 }, (_, i) => ({ id: `p${i}` }));
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: tooMany } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings accepts configuredProviders with exactly 100 items", async () => {
+    const exactly100 = Array.from({ length: 100 }, (_, i) => ({ id: `p${i}` }));
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: exactly100 } } });
+    expect(mockStore._data.configuredProviders).toHaveLength(100);
+  });
+
+  test("POST /settings rejects geminiModels exceeding 100 items", async () => {
+    mockStore._data.geminiModels = [];
+    const tooMany = Array.from({ length: 101 }, (_, i) => `model-${i}`);
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { geminiModels: tooMany } } });
+    expect(mockStore._data.geminiModels).toEqual([]);
+  });
+
+  test("POST /settings rejects customPrompts exceeding 200 items", async () => {
+    mockStore._data.customPrompts = [];
+    const tooMany = Array.from({ length: 201 }, (_, i) => ({ text: `p${i}` }));
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { customPrompts: tooMany } } });
+    expect(mockStore._data.customPrompts).toEqual([]);
+  });
 });
 
 // ── Rogue extension: second extension origin gets null token ──────────────────

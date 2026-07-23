@@ -128,7 +128,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         historyFull: historyFull0.slice(-500)
       });
     } catch (err) {
-      browser.tabs.sendMessage(tabId, { action: "show-error", error: err.message.replace(/\b(sk-ant-[A-Za-z0-9_-]{4,}|sk-[A-Za-z0-9_-]{4,}|AIza[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,})/g, "[key]") });
+      browser.tabs.sendMessage(tabId, { action: "show-error", error: err.message.replace(/\b(sk-ant-[A-Za-z0-9_-]{4,}|sk-[A-Za-z0-9_-]{4,}|AIza[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|gho_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,})/g, "[key]") });
     }
   })();
   return true;
@@ -211,6 +211,6 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
       historyFull: historyFull1.slice(-500)
     });
   } catch (err) {
-    browser.tabs.sendMessage(tab.id, { action: "show-error", error: err.message.replace(/\b(sk-ant-[A-Za-z0-9_-]{4,}|sk-[A-Za-z0-9_-]{4,}|AIza[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,})/g, "[key]") });
+    browser.tabs.sendMessage(tab.id, { action: "show-error", error: err.message.replace(/\b(sk-ant-[A-Za-z0-9_-]{4,}|sk-[A-Za-z0-9_-]{4,}|AIza[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|gho_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,})/g, "[key]") });
   }
 });

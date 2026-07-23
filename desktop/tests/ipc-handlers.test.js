@@ -255,6 +255,46 @@ describe("registerAll", () => {
   });
 });
 
+// ── makeBackupHandlers ────────────────────────────────────────────────────────
+
+const { makeBackupHandlers } = require("../ipc-handlers");
+
+describe("makeBackupHandlers openBackup size guard", () => {
+  function makeDialog(filePath) {
+    return {
+      showOpenDialog: async () => ({ canceled: false, filePaths: [filePath] }),
+      showSaveDialog: async () => ({ canceled: true })
+    };
+  }
+
+  test("returns null when selected file exceeds 50 MB", async () => {
+    const fs = {
+      statSync: () => ({ size: 51 * 1024 * 1024 }),
+      readFileSync: jest.fn()
+    };
+    const { openBackup } = makeBackupHandlers(makeDialog("/large.ttbackup"), fs, null);
+    const result = await openBackup();
+    expect(result).toBeNull();
+    expect(fs.readFileSync).not.toHaveBeenCalled();
+  });
+
+  test("reads file when size is within limit", async () => {
+    const fs = {
+      statSync: () => ({ size: 1024 }),
+      readFileSync: () => '{"settings":{}}'
+    };
+    const { openBackup } = makeBackupHandlers(makeDialog("/small.ttbackup"), fs, null);
+    const result = await openBackup();
+    expect(result).toBe('{"settings":{}}');
+  });
+
+  test("returns null when dialog is canceled", async () => {
+    const dialog = { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) };
+    const { openBackup } = makeBackupHandlers(dialog, {}, null);
+    expect(await openBackup()).toBeNull();
+  });
+});
+
 // ── makeStoreDeleteHandler ─────────────────────────────────────────────────────
 
 function makeStoreWithDelete(initial = {}) {

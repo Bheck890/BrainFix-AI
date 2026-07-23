@@ -49,6 +49,6 @@
     "open_in_tab": true
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.northpandalabs.com https:;"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.northpandalabs.com https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://models.inference.ai.azure.com http://localhost:* http://127.0.0.1:*;"
   }
 }
