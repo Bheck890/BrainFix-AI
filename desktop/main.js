@@ -140,8 +140,8 @@ const isDev = process.argv.includes("--dev");
 // afterPack injects this into lib/license.js at build time; this is a fallback
 // for dev builds where the env var wasn't set during the build.
 function _readCipherKey() {
-  if (process.env.REQUEST_SIGN_KEY) return process.env.REQUEST_SIGN_KEY;
   if (app.isPackaged) return null; // installed build must rely on afterPack injection
+  if (process.env.REQUEST_SIGN_KEY) return process.env.REQUEST_SIGN_KEY;
   try {
     const etcFile = path.join(__dirname, "..", "ETC", "brainfix-ai.env");
     if (!fs.existsSync(etcFile)) return null;
@@ -184,6 +184,18 @@ function rootPath(...parts) {
 
 const APP_ICON = rootPath("icons", "icon.png");
 
+// Prevent renderer pages from navigating away from their local file: URL.
+// Guards against XSS-induced location.href redirects that would load an
+// external page inside Electron with the preload still active.
+function _lockNavigation(win) {
+  win.webContents.on("will-navigate", (event, url) => {
+    let u;
+    try { u = new URL(url); } catch { event.preventDefault(); return; }
+    if (u.protocol !== "file:") event.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+}
+
 // ── Popup window ───────────────────────────────────────────────────────────────
 
 function createPopup() {
@@ -206,6 +218,7 @@ function createPopup() {
   });
 
   popupWin.loadFile(path.join(__dirname, "renderer", "popup.html"));
+  _lockNavigation(popupWin);
 
   popupWin.webContents.on("did-finish-load", () => applyZoomToWindow(popupWin));
 
@@ -266,6 +279,7 @@ function openResults() {
   });
   resultsWin.setMenu(null);
   resultsWin.loadFile(resultsHtml);
+  _lockNavigation(resultsWin);
   resultsWin.webContents.on("did-finish-load", () => applyZoomToWindow(resultsWin));
   if (isDev || IS_TEST_BUILD || store.get("devMode")) resultsWin.webContents.openDevTools({ mode: "detach" });
   resultsWin.webContents.on("before-input-event", (_, input) => {
@@ -299,10 +313,15 @@ function openGuide(hash) {
   });
   guideWin.setMenu(null);
   guideWin.webContents.setWindowOpenHandler(({ url }) => {
-    try { const u = new URL(url); if (u.protocol === "https:" || u.protocol === "http:") shell.openExternal(url); } catch {}
+    try { const u = new URL(url); if (u.protocol === "https:") shell.openExternal(url); } catch {}
     return { action: "deny" };
   });
   guideWin.loadFile(path.join(__dirname, "renderer", "guide.html"), hash ? { hash } : {});
+  guideWin.webContents.on("will-navigate", (event, url) => {
+    let u;
+    try { u = new URL(url); } catch { event.preventDefault(); return; }
+    if (u.protocol !== "file:") event.preventDefault();
+  });
   guideWin.on("closed", () => { guideWin = null; });
 }
 
@@ -326,6 +345,7 @@ function openHistory() {
   });
   historyWin.setMenu(null);
   historyWin.loadFile(path.join(__dirname, "renderer", "history.html"));
+  _lockNavigation(historyWin);
   historyWin.on("closed", () => { historyWin = null; });
 }
 
@@ -350,6 +370,7 @@ function openSettings() {
   });
   settingsWin.setMenu(null);
   settingsWin.loadFile(path.join(__dirname, "renderer", "settings.html"));
+  _lockNavigation(settingsWin);
   settingsWin.webContents.on("did-finish-load", () => applyZoomToWindow(settingsWin));
   settingsWin.on("closed", () => { settingsWin = null; });
 
@@ -591,7 +612,7 @@ app.whenReady().then(() => {
   ipcMain.handle("get-cipher-key",  ()        => _readCipherKey());
   ipcMain.handle("rebuild-tray",    ()        => updateTrayTooltip());
 
-  const backupHandlers = makeBackupHandlers(dialog, fs);
+  const backupHandlers = makeBackupHandlers(dialog, fs, path);
   ipcMain.handle("save-backup", backupHandlers.saveBackup);
   ipcMain.handle("open-backup", backupHandlers.openBackup);
 

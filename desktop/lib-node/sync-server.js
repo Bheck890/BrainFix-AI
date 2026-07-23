@@ -17,10 +17,21 @@ const SYNC_KEYS = new Set([
   "licenseEmail", "licenseKey"
 ]);
 
+const _SYNC_SSRF_BLOCKED = /^(0\.0\.0\.0|169\.254\.\d+\.\d+|168\.63\.129\.16|metadata\.google\.internal|fe80:)/i;
+
 function _isValidProvider(p) {
   if (!p || typeof p !== "object" || Array.isArray(p)) return false;
   if (typeof p.id !== "string" || !p.id) return false;
-  if ("baseUrl" in p && typeof p.baseUrl !== "string") return false;
+  if ("baseUrl" in p) {
+    if (typeof p.baseUrl !== "string") return false;
+    if (p.baseUrl) {
+      try {
+        const u = new URL(p.baseUrl);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+        if (_SYNC_SSRF_BLOCKED.test(u.hostname)) return false;
+      } catch { return false; }
+    }
+  }
   if ("apiKey" in p && p.apiKey !== null && typeof p.apiKey !== "string") return false;
   if ("model"  in p && typeof p.model  !== "string") return false;
   return true;

@@ -312,7 +312,7 @@ async function init() {
     btn.disabled = true; btn.textContent = "Checking…";
     const upd = await btcAPI.checkForUpdate().catch(() => null);
     btn.disabled = false; btn.textContent = "Check for Updates";
-    if (upd?.version) {
+    if (upd?.version && typeof upd.url === "string" && upd.url.startsWith("https://github.com/")) {
       status.textContent = `Version ${upd.version} available — `;
       const link = document.createElement("a");
       link.textContent = "Download from GitHub ↗";
