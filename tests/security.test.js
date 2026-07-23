@@ -276,13 +276,16 @@ describe("browser extension security principles", () => {
     });
 
     test("no unsafe-eval in content_security_policy", () => {
-      const csp = manifest.content_security_policy || "";
+      const raw = manifest.content_security_policy || "";
+      // MV3 allows an object with { extension_pages: "..." }
+      const csp = typeof raw === "object" ? Object.values(raw).join(" ") : String(raw);
       expect(csp).not.toContain("unsafe-eval");
     });
 
     test("no unsafe-inline scripts in content_security_policy", () => {
       // unsafe-inline in script-src negates XSS protection entirely
-      const csp = manifest.content_security_policy || "";
+      const raw = manifest.content_security_policy || "";
+      const csp = typeof raw === "object" ? Object.values(raw).join(" ") : String(raw);
       const scriptSrc = (csp.match(/script-src([^;]*)/) || [])[1] || "";
       expect(scriptSrc).not.toContain("unsafe-inline");
     });

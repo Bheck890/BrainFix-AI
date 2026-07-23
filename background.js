@@ -106,7 +106,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       const today = todayDate();
 
-      const stored0 = await browser.storage.local.get(["historyLog", "historyFull"]);
+      const stored0 = await cryptoGet(["historyLog", "historyFull"]);
       const fresh = purgeOldLog(stored0.historyLog || []);
       fresh.push({
         timestamp: Date.now(), date: today, source: "extension",
@@ -123,12 +123,12 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         outputs: [result.slice(0, 5000)],
         ...cost
       });
-      await browser.storage.local.set({
+      await cryptoSet({
         historyLog: fresh.slice(-200), lastAction: actionVal,
         historyFull: historyFull0.slice(-500)
       });
     } catch (err) {
-      browser.tabs.sendMessage(tabId, { action: "show-error", error: err.message.replace(/\b(sk-|AIza)[A-Za-z0-9_-]{4,}/g, "[key]") });
+      browser.tabs.sendMessage(tabId, { action: "show-error", error: err.message.replace(/\b(sk-ant-[A-Za-z0-9_-]{4,}|sk-[A-Za-z0-9_-]{4,}|AIza[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,})/g, "[key]") });
     }
   })();
   return true;
@@ -187,7 +187,7 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
     const lastAction = menuId.startsWith("dyn-") ? menuId.replace("dyn-", "custom-") : menuId;
     const today = todayDate();
 
-    const stored1 = await browser.storage.local.get(["historyLog", "historyFull"]);
+    const stored1 = await cryptoGet(["historyLog", "historyFull"]);
     const fresh = purgeOldLog(stored1.historyLog || []);
     fresh.push({
       timestamp: Date.now(), date: today, source: "extension",
@@ -205,12 +205,12 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
       outputs: results.map(r => r.slice(0, 5000)),
       ...cost
     });
-    await browser.storage.local.set({
+    await cryptoSet({
       lastAction,
       historyLog: fresh.slice(-200),
       historyFull: historyFull1.slice(-500)
     });
   } catch (err) {
-    browser.tabs.sendMessage(tab.id, { action: "show-error", error: err.message });
+    browser.tabs.sendMessage(tab.id, { action: "show-error", error: err.message.replace(/\b(sk-ant-[A-Za-z0-9_-]{4,}|sk-[A-Za-z0-9_-]{4,}|AIza[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,})/g, "[key]") });
   }
 });

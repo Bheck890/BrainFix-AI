@@ -4,6 +4,9 @@
 let allEntries = [];
 const copyFn = text => btcAPI.writeClipboard(text);
 
+const clearBtn = document.getElementById("clear-all-btn");
+clearBtn.disabled = true;
+
 async function load() {
   const data  = await browser.storage.local.get(["historyFull", "devMode", "historyPin"]);
   const badge = document.getElementById("dev-mode-badge");
@@ -13,6 +16,7 @@ async function load() {
     allEntries = [...(fresh.historyFull || [])].reverse();
     HistoryUI.render(allEntries, copyFn);
     HistoryUI.showSetPinBtn(hash => HistoryUI.showPinManagement(hash));
+    clearBtn.disabled = false;
   };
 
   if (data.historyPin) {
@@ -35,7 +39,7 @@ document.getElementById("search-input").addEventListener("input", e => {
   ), copyFn);
 });
 
-document.getElementById("clear-all-btn").addEventListener("click", async () => {
+clearBtn.addEventListener("click", async () => {
   if (!confirm(`Delete all ${allEntries.length} history entries? This cannot be undone.`)) return;
   await browser.storage.local.set({ historyFull: [] });
   allEntries = [];

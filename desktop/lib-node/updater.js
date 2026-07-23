@@ -15,7 +15,11 @@ function fetchDownloadsJson() {
       headers: { 'User-Agent': 'thought-tidy-updater' }
     }, res => {
       let body = '';
-      res.on('data', c => { body += c; });
+      const MAX_BODY = 64 * 1024;
+      res.on('data', c => {
+        body += c;
+        if (body.length > MAX_BODY) { req.destroy(); reject(new Error('Update response too large')); }
+      });
       res.on('end', () => {
         try { resolve(JSON.parse(body)); }
         catch { reject(new Error('Invalid downloads.json response')); }

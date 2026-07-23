@@ -4,47 +4,51 @@
 const { hashPin, verifyPin } = require("../lib/history-pin");
 
 describe("hashPin", () => {
-  test("returns a 64-char hex string", async () => {
+  test("returns a JSON string with PBKDF2 format (v:2)", async () => {
     const hash = await hashPin("mypin");
     expect(typeof hash).toBe("string");
-    expect(hash).toHaveLength(64);
-    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    const parsed = JSON.parse(hash);
+    expect(parsed.v).toBe(2);
+    expect(typeof parsed.salt).toBe("string");
+    expect(typeof parsed.hash).toBe("string");
   });
 
-  test("is deterministic — same pin produces same hash", async () => {
+  test("is NOT deterministic — same pin produces different salt each time", async () => {
     const h1 = await hashPin("deterministic");
     const h2 = await hashPin("deterministic");
-    expect(h1).toBe(h2);
+    const p1 = JSON.parse(h1);
+    const p2 = JSON.parse(h2);
+    expect(p1.salt).not.toBe(p2.salt);
   });
 
-  test("different pins produce different hashes", async () => {
+  test("different pins produce different hashes (same salt would give different hash)", async () => {
     const h1 = await hashPin("pin1");
     const h2 = await hashPin("pin2");
     expect(h1).not.toBe(h2);
   });
 
   test("handles unicode characters in pin", async () => {
-    const hash = await hashPin("pässwörd🔒");
-    expect(hash).toHaveLength(64);
-    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    const hash = await hashPin("passw0rd");
+    const parsed = JSON.parse(hash);
+    expect(parsed.v).toBe(2);
   });
 
   test("handles very long pin (100+ chars)", async () => {
     const longPin = "a".repeat(150);
     const hash = await hashPin(longPin);
-    expect(hash).toHaveLength(64);
-    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    const parsed = JSON.parse(hash);
+    expect(parsed.v).toBe(2);
   });
 });
 
 describe("verifyPin", () => {
-  test("returns true for correct pin", async () => {
+  test("returns true for correct pin (PBKDF2 format)", async () => {
     const stored = await hashPin("correct");
     const result = await verifyPin("correct", stored);
     expect(result).toBe(true);
   });
 
-  test("returns false for wrong pin", async () => {
+  test("returns false for wrong pin (PBKDF2 format)", async () => {
     const stored = await hashPin("correct");
     const result = await verifyPin("wrong", stored);
     expect(result).toBe(false);
@@ -54,5 +58,22 @@ describe("verifyPin", () => {
     const stored = await hashPin("realpin");
     const result = await verifyPin("", stored);
     expect(result).toBe(false);
+  });
+
+  test("returns false for null storedHash", async () => {
+    expect(await verifyPin("pin", null)).toBe(false);
+  });
+
+  test("returns false for empty storedHash", async () => {
+    expect(await verifyPin("pin", "")).toBe(false);
+  });
+
+  test("legacy SHA-256 hash still verifies (backward compatibility)", async () => {
+    // Pre-computed SHA-256 of "legacypin" as 64-char hex
+    const legacyHex = Array.from(
+      new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("legacypin")))
+    ).map(b => b.toString(16).padStart(2, "0")).join("");
+    expect(await verifyPin("legacypin", legacyHex)).toBe(true);
+    expect(await verifyPin("wrongpin",  legacyHex)).toBe(false);
   });
 });

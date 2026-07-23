@@ -88,18 +88,17 @@ describe("H2 — Offline demo grant expiry (FIXED)", () => {
 describe("H3 — History race condition (FIXED)", () => {
   const bgSource = src("background.js");
 
-  test("background.js fetches historyLog and historyFull in a single get call", () => {
-    // Both keys must appear together in the same get([ … ]) invocation.
-    // We check that the combined pattern is present twice (one per handler).
-    const pattern = /browser\.storage\.local\.get\(\["historyLog",\s*"historyFull"\]\)/g;
+  test("background.js fetches historyLog and historyFull together via cryptoGet", () => {
+    // Both keys must appear together in the same cryptoGet([ … ]) invocation (atomic read).
+    // background.js now uses cryptoGet() to also get encrypted history in a single call.
+    const pattern = /cryptoGet\(\["historyLog",\s*"historyFull"\]\)/g;
     const matches = bgSource.match(pattern);
     expect(matches).not.toBeNull();
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
   test("background.js does not have separate get calls for historyLog and historyFull", () => {
-    // Separate calls would look like: get("historyLog") … get("historyFull")
-    // Those must not appear as independent single-key lookups for these two keys.
+    // Separate direct storage calls for these keys would bypass encryption and the atomicity fix.
     const isolatedLog  = /browser\.storage\.local\.get\("historyLog"\)/.test(bgSource);
     const isolatedFull = /browser\.storage\.local\.get\("historyFull"\)/.test(bgSource);
     expect(isolatedLog).toBe(false);
