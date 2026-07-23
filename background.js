@@ -93,13 +93,14 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       systemPrompt = MENU_PROMPTS[actionVal];
       if (!systemPrompt) return;
     }
+    const basePrompt = systemPrompt;
     systemPrompt = buildPromptWithProfile(systemPrompt, settings);
 
     browser.tabs.sendMessage(tabId, { action: "show-loading", originalText: selectedText });
     try {
       const cloudProviders = (settings.configuredProviders || []).filter(p => !_EXT_LOCAL_IDS.has(p.id));
       const { result, usedProvider, usedModel } = await callAIWithFallback(
-        cloudProviders, settings.geminiModels, settings, systemPrompt, selectedText
+        cloudProviders, settings.geminiModels, settings, systemPrompt, selectedText, { basePrompt }
       );
       browser.tabs.sendMessage(tabId, { action: "show-results", originalText: selectedText, results: [result] });
 
@@ -164,6 +165,7 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
     systemPrompt = MENU_PROMPTS[menuId];
     if (!systemPrompt) return;
   }
+  const basePrompt = systemPrompt;
   systemPrompt = buildPromptWithProfile(systemPrompt, settings);
 
   browser.tabs.sendMessage(tab.id, { action: "show-loading", originalText: selectedText });
@@ -174,7 +176,7 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
     let usedProvider = "", usedModel = "";
     for (let i = 0; i < variants; i++) {
       const r = await callAIWithFallback(
-        cloudProviders, settings.geminiModels, settings, systemPrompt, selectedText
+        cloudProviders, settings.geminiModels, settings, systemPrompt, selectedText, { basePrompt }
       );
       results.push(r.result);
       usedProvider = r.usedProvider;

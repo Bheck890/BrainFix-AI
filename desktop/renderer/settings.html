@@ -493,6 +493,9 @@
       <p class="hint profile-intro">
         Describe yourself. When enabled, every action knows who you are, so output sounds like <em>you</em>, cleaned up.
       </p>
+      <p class="hint" style="color:var(--text-muted);margin-top:-6px">
+        Profile data is sent to your <strong>primary</strong> AI provider only. Fallback providers receive the base instruction without your personal details.
+      </p>
       <div class="profile-grid">
         <div class="field">
           <label for="profileName">Your Name</label>
@@ -532,6 +535,13 @@
           <div class="fetch-status" id="context-url-status"></div>
         </div>
       </div>
+      <details id="profile-data-preview" style="margin-top:14px;margin-bottom:4px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none;list-style:none;display:flex;align-items:center;gap:4px">
+          <span id="profile-preview-arrow" style="font-size:10px">&#9654;</span> What gets sent to your primary AI provider
+        </summary>
+        <pre id="profile-preview-body" style="margin:8px 0 0;padding:10px 12px;background:var(--surface1,#313244);border-radius:6px;font-size:11px;font-family:monospace;white-space:pre-wrap;color:var(--subtext0,#a6adc8);max-height:200px;overflow-y:auto;line-height:1.5">Enable the toggle above to see a preview.</pre>
+      </details>
+
       <div class="section-save-row">
         <button class="section-save-btn" id="profile-save-btn">Save</button>
         <span class="section-save-status" id="profile-save-status"></span>

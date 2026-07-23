@@ -249,6 +249,33 @@ async function init() {
     const profEl = document.getElementById("profileEnabled");
     if (profEl) profEl.checked = s.profileEnabled || false;
 
+    function _updateProfilePreview() {
+      const body = document.getElementById("profile-preview-body");
+      if (!body) return;
+      const enabled = document.getElementById("profileEnabled")?.checked;
+      if (!enabled) { body.textContent = "Profile is disabled -- nothing extra is sent."; return; }
+      const name    = document.getElementById("profileName")?.value.trim()    || "";
+      const role    = document.getElementById("profileRole")?.value.trim()    || "";
+      const style   = document.getElementById("profileStyle")?.value.trim()   || "";
+      const context = document.getElementById("profileContext")?.value.trim() || "";
+      if (!name && !role && !style && !context) { body.textContent = "No profile fields filled in yet."; return; }
+      const lines = ["[Sent to your primary AI provider]\n\nYou are assisting a specific person. Here is their profile:\n"];
+      if (name)    lines.push("Name: " + name);
+      if (role)    lines.push("Role: " + role);
+      if (style)   lines.push("Writing style & preferences: " + style);
+      if (context) lines.push("Personal context:\n" + (context.length > 300 ? context.slice(0, 300) + "..." : context));
+      body.textContent = lines.join("\n");
+    }
+    _updateProfilePreview();
+    ["profileEnabled", "profileName", "profileRole", "profileStyle", "profileContext"].forEach(id => {
+      document.getElementById(id)?.addEventListener("input",  _updateProfilePreview);
+      document.getElementById(id)?.addEventListener("change", _updateProfilePreview);
+    });
+    document.getElementById("profile-data-preview")?.addEventListener("toggle", e => {
+      const arrow = document.getElementById("profile-preview-arrow");
+      if (arrow) arrow.textContent = e.target.open ? "▾" : "▴";
+    });
+
     initCommonSettingsWiring(s);
     document.getElementById("contextEnabled")?.addEventListener("change", async () => {
       await browser.storage.local.set({ contextEnabled: document.getElementById("contextEnabled")?.checked !== false });

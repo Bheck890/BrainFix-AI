@@ -15,6 +15,9 @@ files:
   - from: "../popup/results.css"
     to:   "renderer/results.css"
 
+asar: true
+asarIntegrity: true
+
 afterPack: scripts/after-pack.js
 
 # Shared source files from the parent repo copied into the package

@@ -381,11 +381,13 @@ async function quickAction(action) {
     const { callAIWithFallback }                   = require("./lib-node/api");
     const { estimateCost }                         = require("../lib/pricing");
     const s = encStore.store;
-    let systemPrompt = buildPromptWithProfile(MENU_PROMPTS[action] || MENU_PROMPTS["fix-spelling"], s);
+    const rawBase      = MENU_PROMPTS[action] || MENU_PROMPTS["fix-spelling"];
     const grammarBlock = buildGrammarInstructions(s.grammarFilters);
-    if (grammarBlock) systemPrompt += "\n\n" + grammarBlock;
+    const basePrompt   = grammarBlock ? rawBase + "\n\n" + grammarBlock : rawBase;
+    const systemPrompt = buildPromptWithProfile(basePrompt, s);
     const { result, usedProvider, usedModel } = await callAIWithFallback(
-      s.configuredProviders || [], s.geminiModels || [null, null, null], s, systemPrompt, text
+      s.configuredProviders || [], s.geminiModels || [null, null, null], s, systemPrompt, text,
+      { basePrompt }
     );
     clipboard.writeText(result);
     store.set("lastAction", action);
@@ -431,11 +433,12 @@ async function quickCustomAction(idx) {
     const s         = encStore.store;
     const cp        = (s.customPrompts || [])[idx];
     if (!cp) return;
-    let systemPrompt = buildPromptWithProfile(cp.prompt, s);
     const grammarBlock = buildGrammarInstructions(s.grammarFilters);
-    if (grammarBlock) systemPrompt += "\n\n" + grammarBlock;
+    const basePrompt   = grammarBlock ? cp.prompt + "\n\n" + grammarBlock : cp.prompt;
+    const systemPrompt = buildPromptWithProfile(basePrompt, s);
     const { result, usedProvider, usedModel } = await callAIWithFallback(
-      s.configuredProviders || [], s.geminiModels || [null, null, null], s, systemPrompt, text
+      s.configuredProviders || [], s.geminiModels || [null, null, null], s, systemPrompt, text,
+      { basePrompt }
     );
     clipboard.writeText(result);
     store.set("lastAction", `custom-${idx}`);

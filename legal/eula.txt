@@ -1,7 +1,7 @@
 END-USER LICENSE AGREEMENT -- THOUGHT TIDY
 
 Effective date: 2026-05-25
-Last updated: 2026-06-15
+Last updated: 2026-07-23
 Contact: northpandalabs@gmail.com
 
 By installing or using Thought Tidy ("Software"), you agree to be bound by
@@ -101,13 +101,19 @@ the Software's source code is made available.
 4. THIRD-PARTY API KEYS AND SERVICES
 
 The Software requires your own API keys from third-party AI providers
-(OpenAI, Anthropic, Google) or a locally running Ollama instance. By using
-these providers you agree to:
+(OpenAI, Anthropic, Google, GitHub) or a locally running instance (Ollama,
+LM Studio, Jan AI). The AI Application Assistance subscription uses
+OpenRouter as its backend. By using these providers you agree to:
 
 - Comply with the terms of service of each AI provider you use.
 - Accept that your text is transmitted to and processed by those providers,
-  subject to their own terms and privacy policies. When using Ollama, text
-  is processed locally on your device.
+  subject to their own terms and privacy policies. When using Ollama, LM
+  Studio, or Jan AI, text is processed locally on your device.
+- Accept that when Your Profile (name, role, writing style, personal context)
+  is enabled, that profile data is included in the prompt sent to your
+  PRIMARY configured AI provider. Fallback providers (used only when the
+  primary fails or rate-limits) receive only the base task instruction --
+  no profile data is forwarded to them.
 - Accept sole responsibility for any content you generate, including content
   produced by multiple-suggestion (variant) requests.
 
