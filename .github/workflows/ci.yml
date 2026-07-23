@@ -30,6 +30,7 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           COPILOT_TOKEN:  ${{ secrets.COPILOT_TOKEN }}
+          REQUEST_SIGN_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
       - name: Upload extension coverage report
         if: always()
