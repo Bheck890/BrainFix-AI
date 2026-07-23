@@ -374,11 +374,13 @@ function openSettings() {
   settingsWin.webContents.on("did-finish-load", () => applyZoomToWindow(settingsWin));
   settingsWin.on("closed", () => { settingsWin = null; });
 
-  if (isDev || IS_TEST_BUILD || store.get("devMode")) settingsWin.webContents.openDevTools({ mode: "right" });
-  settingsWin.webContents.on("before-input-event", (_, input) => {
-    if (input.type === "keyDown" && input.key === "F12")
-      settingsWin.webContents.isDevToolsOpened() ? settingsWin.webContents.closeDevTools() : settingsWin.webContents.openDevTools({ mode: "right" });
-  });
+  if (isDev || IS_TEST_BUILD || store.get("devMode")) {
+    settingsWin.webContents.openDevTools({ mode: "right" });
+    settingsWin.webContents.on("before-input-event", (_, input) => {
+      if (input.type === "keyDown" && input.key === "F12")
+        settingsWin.webContents.isDevToolsOpened() ? settingsWin.webContents.closeDevTools() : settingsWin.webContents.openDevTools({ mode: "right" });
+    });
+  }
 }
 
 // ── Tray ───────────────────────────────────────────────────────────────────────
