@@ -128,7 +128,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         historyFull: historyFull0.slice(-500)
       });
     } catch (err) {
-      browser.tabs.sendMessage(tabId, { action: "show-error", error: err.message });
+      browser.tabs.sendMessage(tabId, { action: "show-error", error: err.message.replace(/\b(sk-|AIza)[A-Za-z0-9_-]{4,}/g, "[key]") });
     }
   })();
   return true;

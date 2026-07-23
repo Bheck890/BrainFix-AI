@@ -20,7 +20,8 @@ const store = new Store({ name: "thought-tidy-settings" });
 // values so migration and getters are safe to call repeatedly.
 
 const ENC_PREFIX = "enc1:";
-const _SENSITIVE = new Set(["openaiKey", "claudeKey", "geminiKey", "licenseEmail", "licenseKey"]);
+const _SENSITIVE     = new Set(["openaiKey", "claudeKey", "geminiKey", "licenseEmail", "licenseKey", "demoMode", "corpMode"]);
+const _STRICT_KEYS   = new Set(["demoMode", "corpMode"]);
 const _SYNC_KEYS = new Set([
   "configuredProviders", "geminiModels",
   "openaiKey", "claudeKey", "geminiKey",
@@ -30,8 +31,15 @@ const _SYNC_KEYS = new Set([
   "licenseEmail", "licenseKey"
 ]);
 
+let _encWarnSent = false;
 function _encVal(v) {
-  if (!safeStorage.isEncryptionAvailable()) return v;
+  if (!safeStorage.isEncryptionAvailable()) {
+    if (!_encWarnSent) {
+      _encWarnSent = true;
+      console.warn("[security] safeStorage encryption unavailable -- API keys are stored unprotected on disk.");
+    }
+    return v;
+  }
   try { return ENC_PREFIX + safeStorage.encryptString(String(v)).toString("base64"); }
   catch { return v; }
 }
@@ -39,6 +47,11 @@ function _decVal(v) {
   if (typeof v !== "string" || !v.startsWith(ENC_PREFIX)) return v;
   try { return safeStorage.decryptString(Buffer.from(v.slice(ENC_PREFIX.length), "base64")); }
   catch { return v; }
+}
+function _decValStrict(v) {
+  if (typeof v !== "string" || !v.startsWith(ENC_PREFIX)) return null;
+  try { return safeStorage.decryptString(Buffer.from(v.slice(ENC_PREFIX.length), "base64")); }
+  catch { return null; }
 }
 function _encProviders(arr) {
   if (!Array.isArray(arr)) return arr;
@@ -53,6 +66,7 @@ function makeEncryptingStore(raw) {
   return {
     get(key) {
       const v = raw.get(key);
+      if (_STRICT_KEYS.has(key)) return _decValStrict(v);
       if (_SENSITIVE.has(key)) return _decVal(v);
       if (key === "configuredProviders") return _decProviders(v);
       return v;
@@ -76,7 +90,9 @@ function makeEncryptingStore(raw) {
     },
     get store() {
       const s = { ...raw.store };
-      for (const k of _SENSITIVE) { if (k in s) s[k] = _decVal(s[k]); }
+      for (const k of _SENSITIVE) {
+        if (k in s) s[k] = _STRICT_KEYS.has(k) ? _decValStrict(s[k]) : _decVal(s[k]);
+      }
       if (s.configuredProviders) s.configuredProviders = _decProviders(s.configuredProviders);
       return s;
     }
@@ -267,7 +283,10 @@ function openGuide(hash) {
     }
   });
   guideWin.setMenu(null);
-  guideWin.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
+  guideWin.webContents.setWindowOpenHandler(({ url }) => {
+    try { const u = new URL(url); if (u.protocol === "https:" || u.protocol === "http:") shell.openExternal(url); } catch {}
+    return { action: "deny" };
+  });
   guideWin.loadFile(path.join(__dirname, "renderer", "guide.html"), hash ? { hash } : {});
   guideWin.on("closed", () => { guideWin = null; });
 }

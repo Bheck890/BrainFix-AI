@@ -119,7 +119,7 @@ describe("buildPromptWithProfile", () => {
   test("uses a separator between profile and base prompt", () => {
     const s = { profileEnabled: true, profileName: "Bailey" };
     const result = buildPromptWithProfile(BASE, s);
-    expect(result).toContain("---");
+    expect(result).toContain("</user_profile>");
   });
 
   test("only name provided — does not include empty role/style/context lines", () => {

@@ -222,17 +222,17 @@ describe("checkLicensePeriodically", () => {
 // ── isDemoMode ─────────────────────────────────────────────────────────────────
 
 describe("isDemoMode", () => {
-  test("returns true when demoMode is set and no other license", () => {
-    expect(isDemoMode({ demoMode: true })).toBe(true);
+  test("returns true when demoMode is 'active' and no other license", () => {
+    expect(isDemoMode({ demoMode: "active" })).toBe(true);
   });
-  test("returns false when corpMode is also set", () => {
-    expect(isDemoMode({ demoMode: true, corpMode: true })).toBe(false);
+  test("returns false when corpMode is also 'active'", () => {
+    expect(isDemoMode({ demoMode: "active", corpMode: "active" })).toBe(false);
   });
   test("returns false when Gumroad keys are present", () => {
-    expect(isDemoMode({ demoMode: true, licenseEmail: "a@b.com", licenseKey: "KEY" })).toBe(false);
+    expect(isDemoMode({ demoMode: "active", licenseEmail: "a@b.com", licenseKey: "KEY" })).toBe(false);
   });
-  test("returns false when demoMode is false", () => {
-    expect(isDemoMode({ demoMode: false })).toBe(false);
+  test("returns false when demoMode is 'revoked'", () => {
+    expect(isDemoMode({ demoMode: "revoked" })).toBe(false);
   });
   test("returns false for empty object", () => {
     expect(isDemoMode({})).toBe(false);
@@ -242,14 +242,14 @@ describe("isDemoMode", () => {
 // ── isProUnlocked — demo + corp extensions ────────────────────────────────────
 
 describe("isProUnlocked — demo and corp modes", () => {
-  test("returns true when demoMode is set", () => {
-    expect(isProUnlocked({ demoMode: true })).toBe(true);
+  test("returns true when demoMode is 'active'", () => {
+    expect(isProUnlocked({ demoMode: "active" })).toBe(true);
   });
-  test("returns true when corpMode is set", () => {
-    expect(isProUnlocked({ corpMode: true })).toBe(true);
+  test("returns true when corpMode is 'active'", () => {
+    expect(isProUnlocked({ corpMode: "active" })).toBe(true);
   });
-  test("returns false when demoMode and corpMode are both false", () => {
-    expect(isProUnlocked({ demoMode: false, corpMode: false })).toBe(false);
+  test("returns false when demoMode and corpMode are revoked", () => {
+    expect(isProUnlocked({ demoMode: "revoked", corpMode: "revoked" })).toBe(false);
   });
 });
 

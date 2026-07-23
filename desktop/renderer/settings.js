@@ -134,6 +134,7 @@ async function init() {
   document.getElementById("copyright-year").textContent = _yr > 2026 ? `2026–${_yr}` : "2026";
 
   function showUpdateNotice(upd) {
+    if (!upd.url?.startsWith("https://")) return;
     const notice = document.getElementById("update-notice");
     const link   = document.getElementById("update-link");
     if (!notice || !link) return;

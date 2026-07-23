@@ -78,7 +78,7 @@ describe("H2 — Offline demo grant expiry (FIXED)", () => {
     const fn    = licenseSource.slice(start, end);
     expect(fn).toContain("7 * DAY_MS");
     // The revoke path resets all demo-related keys
-    expect(fn).toContain("demoMode: false");
+    expect(fn).toContain('demoMode: "revoked"');
     expect(fn).toContain("_offlineDemoAt: 0");
   });
 });

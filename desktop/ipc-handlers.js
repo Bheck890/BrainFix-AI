@@ -85,7 +85,13 @@ function registerAll(ipcMain, { store, clipboard, openSettings, openHistory, ope
   ipcMain.handle("open-history",    () => openHistory && openHistory());
   ipcMain.handle("open-results",    () => openResults && openResults());
   ipcMain.handle("close-popup",     () => closePopup());
-  ipcMain.handle("open-url",        (_, url) => openURL(url));
+  ipcMain.handle("open-url",        (_, url) => {
+    if (typeof url !== "string") return;
+    let parsed;
+    try { parsed = new URL(url); } catch { return; }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return;
+    openURL(url);
+  });
 }
 
 module.exports = {
