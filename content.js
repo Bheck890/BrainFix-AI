@@ -173,5 +173,6 @@ function handleEsc(e) { if (e.key === "Escape") removeModal(); }
 
 function removeModal() {
   if (modal) { modal.remove(); modal = null; }
+  _currentResults = [];
   document.removeEventListener("keydown", handleEsc);
 }

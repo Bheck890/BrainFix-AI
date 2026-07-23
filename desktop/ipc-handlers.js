@@ -19,10 +19,11 @@ function makeStoreGetHandler(store) {
   };
 }
 
-const _BLOCKED_STORE_KEYS = new Set(["autoUpdaterEnabled", "updateAvailable"]);
+const _BLOCKED_STORE_KEYS = new Set(["autoUpdaterEnabled", "updateAvailable", "historyPin", "devMode"]);
 
 function makeStoreSetHandler(store) {
   return function storeSet(_, data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) return;
     for (const [k, v] of Object.entries(data)) {
       if (!_BLOCKED_STORE_KEYS.has(k)) store.set(k, v);
     }
@@ -41,7 +42,7 @@ function makeClipboardReadHandler(clipboard) {
 }
 
 function makeClipboardWriteHandler(clipboard) {
-  return (_, text) => clipboard.writeText(text);
+  return (_, text) => { if (typeof text === "string") clipboard.writeText(text); };
 }
 
 // Returns { saveBackup, openBackup } handler functions for .ttbackup file I/O.

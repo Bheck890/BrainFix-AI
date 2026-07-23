@@ -62,18 +62,30 @@ function _decProviders(arr) {
   return arr.map(p => ({ ...p, apiKey: p.apiKey ? _decVal(p.apiKey) : p.apiKey }));
 }
 
+const _ARRAY_SENSITIVE = new Set(["historyFull", "historyLog"]);
+function _encArr(arr) {
+  return _encVal(JSON.stringify(Array.isArray(arr) ? arr : []));
+}
+function _decArr(v) {
+  if (typeof v !== "string" || !v.startsWith(ENC_PREFIX)) return Array.isArray(v) ? v : [];
+  try { return JSON.parse(_decVal(v)); } catch { return []; }
+}
+
 function makeEncryptingStore(raw) {
   return {
     get(key) {
       const v = raw.get(key);
       if (_STRICT_KEYS.has(key)) return _decValStrict(v);
       if (_SENSITIVE.has(key)) return _decVal(v);
+      if (_ARRAY_SENSITIVE.has(key)) return _decArr(v);
       if (key === "configuredProviders") return _decProviders(v);
       return v;
     },
     set(key, val) {
       if (_SENSITIVE.has(key)) {
         raw.set(key, _encVal(val));
+      } else if (_ARRAY_SENSITIVE.has(key)) {
+        raw.set(key, _encArr(val));
       } else if (key === "configuredProviders") {
         raw.set(key, _encProviders(val));
       } else {
@@ -92,6 +104,9 @@ function makeEncryptingStore(raw) {
       const s = { ...raw.store };
       for (const k of _SENSITIVE) {
         if (k in s) s[k] = _STRICT_KEYS.has(k) ? _decValStrict(s[k]) : _decVal(s[k]);
+      }
+      for (const k of _ARRAY_SENSITIVE) {
+        if (k in s) s[k] = _decArr(s[k]);
       }
       if (s.configuredProviders) s.configuredProviders = _decProviders(s.configuredProviders);
       return s;
@@ -412,15 +427,15 @@ async function quickAction(action) {
     store.set("lastAction", action);
 
     const today = todayDate();
-    const fresh = purgeOldLog(store.get("historyLog") || []);
+    const fresh = purgeOldLog(encStore.get("historyLog") || []);
     fresh.push({
       timestamp: Date.now(), date: today, source: "desktop",
       action, provider: usedProvider, model: usedModel,
       inputLen: text.length, outputLen: result.length
     });
-    store.set("historyLog", fresh.slice(-200));
+    encStore.set("historyLog", fresh.slice(-200));
 
-    const historyFull = store.get("historyFull") || [];
+    const historyFull = encStore.get("historyFull") || [];
     const cost = estimateCost(usedModel, text, [result]);
     historyFull.push({
       id: uid(),
@@ -431,7 +446,7 @@ async function quickAction(action) {
       outputs: [result.slice(0, 5000)],
       ...cost
     });
-    store.set("historyFull", historyFull.slice(-500));
+    encStore.set("historyFull", historyFull.slice(-500));
 
     updateTrayTooltip();
     new Notification({ title: "Thought Tidy", body: "Done — result copied to clipboard." }).show();
@@ -463,15 +478,15 @@ async function quickCustomAction(idx) {
     store.set("lastAction", `custom-${idx}`);
 
     const today = todayDate();
-    const fresh = purgeOldLog(store.get("historyLog") || []);
+    const fresh = purgeOldLog(encStore.get("historyLog") || []);
     fresh.push({
       timestamp: Date.now(), date: today, source: "desktop",
       action: `custom-${idx}`, provider: usedProvider, model: usedModel,
       inputLen: text.length, outputLen: result.length
     });
-    store.set("historyLog", fresh.slice(-200));
+    encStore.set("historyLog", fresh.slice(-200));
 
-    const historyFull = store.get("historyFull") || [];
+    const historyFull = encStore.get("historyFull") || [];
     const cost = estimateCost(usedModel, text, [result]);
     historyFull.push({
       id: uid(),
@@ -480,7 +495,7 @@ async function quickCustomAction(idx) {
       systemPrompt: systemPrompt.slice(0, 2000),
       inputText: text.slice(0, 5000), outputs: [result.slice(0, 5000)], ...cost
     });
-    store.set("historyFull", historyFull.slice(-500));
+    encStore.set("historyFull", historyFull.slice(-500));
 
     updateTrayTooltip();
     new Notification({ title: "Thought Tidy", body: "Done — result copied to clipboard." }).show();
@@ -493,7 +508,7 @@ async function quickCustomAction(idx) {
 
 function updateTrayTooltip() {
   if (!tray) return;
-  const count = purgeOldLog(store.get("historyLog") || []).length;
+  const count = purgeOldLog((encStore || store).get("historyLog") || []).length;
   tray.setToolTip(count > 0 ? `Thought Tidy · ${count} fix${count === 1 ? "" : "es"} today` : "Thought Tidy");
   tray.setContextMenu(buildTrayMenu());
 }
@@ -665,7 +680,7 @@ app.whenReady().then(() => {
   createTray();
   updateTrayTooltip();
   // Purge stale log entries from previous days on launch
-  store.set("historyLog", purgeOldLog(store.get("historyLog") || []));
+  encStore.set("historyLog", purgeOldLog(encStore.get("historyLog") || []));
 
   // Global shortcut: Ctrl+Shift+Space  (Cmd+Shift+Space on Mac)
   const shortcut = process.platform === "darwin"
