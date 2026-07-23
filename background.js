@@ -76,6 +76,7 @@ const _EXT_LOCAL_IDS = new Set(["ollama", "lmstudio", "jan"]);
 // ── Run from popup (Process Selected Text button) ────────────────────────────
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== "run-from-popup") return;
+  if (sender.id !== browser.runtime.id) return;
   (async () => {
     const { tabId, actionVal, selectedText } = msg;
     const settings = await cryptoGet([

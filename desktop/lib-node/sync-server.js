@@ -48,6 +48,9 @@ function validateSyncValue(key, val) {
 // encStore must implement: .get(key) → decrypted value, .set(key, val) → encrypts sensitive values
 // port defaults to PORT (47391); pass 0 in tests to get an OS-assigned free port
 function startSyncServer(encStore, port = PORT) {
+  // First extension origin to call /ping becomes the only one that can receive the session
+  // token, preventing a rogue installed extension from stealing it on a subsequent call.
+  let _authorizedExtensionOrigin = null;
   const server = http.createServer((req, res) => {
     // Reflect extension origins; anything else gets 127.0.0.1 (won't match web page origins)
     const origin = req.headers["origin"] || "";
@@ -65,14 +68,21 @@ function startSyncServer(encStore, port = PORT) {
     }
 
     // /ping — public, no token needed; returns syncMeta for timestamp comparison.
-    // Session token is only returned to extension origins — browsers enforce this header,
-    // so non-browser local processes cannot obtain it and therefore cannot call /settings.
+    // Session token is only returned to the first extension origin that calls /ping.
+    // Subsequent callers from a different extension ID receive null, preventing a
+    // rogue installed extension from stealing the token after the real one connected.
     if (req.url === "/ping" && req.method === "GET") {
       const pingOrigin = req.headers["origin"] || "";
       const isExtension = /^(chrome-extension|moz-extension):\/\//.test(pingOrigin);
       const syncMeta = encStore.get("syncMeta") || null;
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ token: isExtension ? SESSION_TOKEN : null, syncMeta }));
+      if (isExtension) {
+        if (!_authorizedExtensionOrigin) _authorizedExtensionOrigin = pingOrigin;
+        const token = pingOrigin === _authorizedExtensionOrigin ? SESSION_TOKEN : null;
+        res.end(JSON.stringify({ token, syncMeta }));
+      } else {
+        res.end(JSON.stringify({ token: null, syncMeta }));
+      }
       return;
     }
 

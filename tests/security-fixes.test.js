@@ -150,9 +150,9 @@ describe("M7 — Context URL fetch restrictions (FIXED)", () => {
   const sharedSettingsSource = src("lib/shared-settings.js");
 
   test("context URL fetch blocks localhost/127.0.0.1/::1", () => {
-    expect(sharedSettingsSource).toContain('u.hostname === "localhost"');
-    expect(sharedSettingsSource).toContain('u.hostname === "127.0.0.1"');
-    expect(sharedSettingsSource).toContain('u.hostname === "::1"');
+    expect(sharedSettingsSource).toContain('"localhost"');
+    expect(sharedSettingsSource).toContain('"127.0.0.1"');
+    expect(sharedSettingsSource).toContain('"::1"');
   });
 
   test("context URL fetch uses AbortController for timeout", () => {

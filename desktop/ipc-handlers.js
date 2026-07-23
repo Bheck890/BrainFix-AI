@@ -32,7 +32,7 @@ function makeStoreSetHandler(store) {
 function makeStoreDeleteHandler(store) {
   return function storeDelete(_, keys) {
     const arr = Array.isArray(keys) ? keys : [keys];
-    arr.forEach(k => { if (typeof store.delete === "function") store.delete(k); });
+    arr.forEach(k => { if (!_BLOCKED_STORE_KEYS.has(k) && typeof store.delete === "function") store.delete(k); });
   };
 }
 

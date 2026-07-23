@@ -38,7 +38,8 @@ async function fetchClaudeModels(apiKey) {
 
 async function fetchGeminiModels(apiKey) {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+    "https://generativelanguage.googleapis.com/v1beta/models",
+    { headers: { "x-goog-api-key": apiKey } }
   );
   if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || res.statusText); }
   const data = await res.json();
@@ -81,10 +82,10 @@ async function testClaude(apiKey, modelId) {
 async function testGemini(apiKey, modelId) {
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: "This is a test" }] }],
           generationConfig: { maxOutputTokens: 5 }
