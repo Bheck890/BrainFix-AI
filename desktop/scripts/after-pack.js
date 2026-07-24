@@ -4,12 +4,6 @@ const fs   = require("fs");
 const path = require("path");
 
 module.exports = async function afterPack({ appOutDir }) {
-  const licPath = path.join(appOutDir, "resources", "lib", "license.js");
-  if (!fs.existsSync(licPath)) {
-    console.warn("[after-pack] lib/license.js not found at:", licPath);
-    return;
-  }
-
   let key = process.env.REQUEST_SIGN_KEY;
   if (!key) {
     const etcFile = path.join(__dirname, "..", "..", "ETC", "brainfix-ai.env");
@@ -30,11 +24,12 @@ module.exports = async function afterPack({ appOutDir }) {
     return;
   }
 
-  const src = fs.readFileSync(licPath, "utf8");
-  if (!src.includes('"%%REQUEST_SIGN_KEY%%"')) {
-    console.log("[after-pack] lib/license.js: placeholder already replaced, skipping.");
-    return;
+  for (const rel of ["lib/license.js", "lib/api.js"]) {
+    const p = path.join(appOutDir, "resources", rel);
+    if (!fs.existsSync(p)) { console.warn(`[after-pack] ${rel} not found, skipping.`); continue; }
+    const src = fs.readFileSync(p, "utf8");
+    if (!src.includes('"%%REQUEST_SIGN_KEY%%"')) continue;
+    fs.writeFileSync(p, src.replace('"%%REQUEST_SIGN_KEY%%"', JSON.stringify(key)));
+    console.log(`[after-pack] REQUEST_SIGN_KEY injected into ${rel}`);
   }
-  fs.writeFileSync(licPath, src.replace('"%%REQUEST_SIGN_KEY%%"', JSON.stringify(key)));
-  console.log("[after-pack] REQUEST_SIGN_KEY injected into lib/license.js");
 };
