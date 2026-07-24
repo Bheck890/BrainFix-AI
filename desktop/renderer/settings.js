@@ -242,7 +242,21 @@ async function init() {
     const wzKey  = document.getElementById("wizard-api-key");
     const wzShow = document.getElementById("wizard-show-btn");
     wzShow?.addEventListener("click", () => {
-      wzKey.type = wzKey.type==="password"?"text":"password"; wzShow.textContent = wzKey.type==="password"?"Show":"Hide";
+      if (wzKey.dataset.isHosted) {
+        if (wzKey.readOnly) {
+          wzKey.value    = wzKey.dataset.real || "";
+          wzKey.readOnly = false;
+          wzShow.textContent = "Hide";
+        } else {
+          wzKey.dataset.real = wzKey.value;
+          wzKey.value        = wzKey.value.replace(/[^-]/g, "•");
+          wzKey.readOnly     = true;
+          wzShow.textContent = "Show";
+        }
+      } else {
+        wzKey.type = wzKey.type === "password" ? "text" : "password";
+        wzShow.textContent = wzKey.type === "password" ? "Show" : "Hide";
+      }
     });
 
     setVal("profileName", s.profileName||""); setVal("profileRole", s.profileRole||"");
