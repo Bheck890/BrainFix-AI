@@ -77,6 +77,38 @@ jobs:
           path: dist/firefox/
           retention-days: 14
 
+      - name: Build Chrome extension
+        run: npm run build:chrome
+
+      - name: Validate Chrome manifest
+        run: |
+          node -e "
+            const m = require('./dist/chrome/manifest.json');
+            if (![2,3].includes(m.manifest_version)) throw new Error('manifest_version must be 2 or 3, got ' + m.manifest_version);
+            const allowed = ['contextMenus','scripting','storage','activeTab','alarms'];
+            const bad = (m.permissions || []).filter(p => !allowed.includes(p));
+            if (bad.length) throw new Error('Unexpected permissions: ' + bad.join(', '));
+            console.log('Chrome manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
+          "
+
+      # main → labelled as test artifact
+      - name: Upload Chrome zip (main)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: thought-tidy-chrome-TEST-${{ github.sha }}
+          path: dist/chrome/
+          retention-days: 14
+
+      # non-main → production artifact labelled with branch name
+      - name: Upload Chrome zip (branch)
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: thought-tidy-chrome-${{ github.ref_name }}-${{ github.sha }}
+          path: dist/chrome/
+          retention-days: 14
+
   # ── Desktop tests + Windows build ─────────────────────────────────────────
   desktop:
     name: Desktop (Windows)

@@ -17,7 +17,6 @@ files:
   - renderer/**
 
 asar: true
-asarIntegrity: true
 
 afterPack: scripts/after-pack.js
 

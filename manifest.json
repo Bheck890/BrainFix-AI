@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Thought Tidy",
-  "version": "1.5.9",
+  "version": "1.6.0",
   "description": "AI writing assistant. Fix, rewrite, or transform text in seconds. Works with OpenAI, Claude, Gemini, GitHub Copilot, or Ollama.",
   "icons": {
     "16":  "icons/icon-16.png",

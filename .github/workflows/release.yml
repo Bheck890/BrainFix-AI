@@ -8,8 +8,10 @@ on:
 jobs:
   # ── Tests: Firefox extension + Windows desktop only ───────────────────────
   test-extensions:
-    name: Test extensions (Firefox)
+    name: Build + release extensions
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v6
@@ -25,7 +27,7 @@ jobs:
       - name: Build Firefox
         run: npm run build:firefox
         env:
-          REQUEST_SIGN_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
       - name: Validate Firefox manifest
         run: |
@@ -37,6 +39,36 @@ jobs:
             if (bad.length) throw new Error('Unexpected permissions: ' + bad.join(', '));
             console.log('Firefox manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
           "
+
+      - name: Build Chrome
+        run: npm run build:chrome
+        env:
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
+
+      - name: Validate Chrome manifest
+        run: |
+          node -e "
+            const m = require('./dist/chrome/manifest.json');
+            if (![2,3].includes(m.manifest_version)) throw new Error('manifest_version must be 2 or 3, got ' + m.manifest_version);
+            const allowed = ['contextMenus','scripting','storage','activeTab','alarms'];
+            const bad = (m.permissions || []).filter(p => !allowed.includes(p));
+            if (bad.length) throw new Error('Unexpected permissions: ' + bad.join(', '));
+            console.log('Chrome manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
+          "
+
+      - name: Zip extensions
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd dist/firefox && zip -r "../../brainfix-firefox-${VERSION}.zip" . && cd ../..
+          cd dist/chrome  && zip -r "../../brainfix-chrome-${VERSION}.zip"  . && cd ../..
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Attach extensions to release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            brainfix-firefox-${{ env.VERSION }}.zip
+            brainfix-chrome-${{ env.VERSION }}.zip
 
   test-desktop-windows:
     name: Test desktop (Windows)
@@ -56,10 +88,6 @@ jobs:
       - name: Run desktop tests
         run: npm test
         working-directory: desktop
-
-  # Browser extension ZIPs for store submission are built locally with:
-  #   node scripts/package.js
-  # The real REQUEST_SIGN_KEY is never stored in GitHub -- only in ETC/brainfix-ai.env.
 
   # ── Desktop builds + release (one job per platform) ───────────────────────
   desktop:

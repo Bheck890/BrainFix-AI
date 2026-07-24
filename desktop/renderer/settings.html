@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://models.inference.ai.azure.com https://api.northpandalabs.com http://localhost:* http://127.0.0.1:*;">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Thought Tidy — Settings</title>
   <link rel="stylesheet" href="settings.css">
@@ -267,6 +267,10 @@
               <span class="wp-name">Jan AI <span class="pro-badge-sm">PRO</span></span>
               <span class="wp-sub">Local AI · OpenAI-compatible</span>
             </button>
+            <button class="wizard-provider-btn" data-provider="hosted">
+              <span class="wp-name">AI Application Assistance <span class="pro-badge-sm">PRO</span></span>
+              <span class="wp-sub">Hosted AI · No API key needed</span>
+            </button>
           </div>
           <div class="wizard-footer">
             <button id="wizard-cancel-1" class="revert-btn">Cancel</button>
@@ -280,7 +284,7 @@
           </div>
           <div id="wizard-api-key-row" class="field">
             <label>
-              API Key
+              <span id="wizard-key-label-text">API Key</span>
               <span id="wizard-key-link" class="api-link" style="cursor:pointer">Get key ↗</span>
             </label>
             <div class="key-row">
@@ -290,7 +294,7 @@
             </div>
             <div class="fetch-status" id="wizard-key-status"></div>
           </div>
-          <div class="field">
+          <div id="wizard-model-row" class="field">
             <label>Model <span class="fetch-status" id="wizard-model-status"></span></label>
             <div class="model-select-row">
               <select id="wizard-model-select" disabled>
@@ -311,6 +315,17 @@
                 <select id="wizard-gemini-model-3" disabled><option value="">— test key first —</option></select>
               </div>
             </div>
+          </div>
+          <!-- Hosted AI: email + info shown above the license key field -->
+          <div id="wizard-hosted-extra" style="display:none">
+            <div class="field" style="margin-bottom:12px">
+              <label for="wizard-hosted-email">Account Email</label>
+              <input type="email" id="wizard-hosted-email" placeholder="you@example.com" autocomplete="off" maxlength="256">
+              <p class="hint" style="margin-top:4px">Email used for your Gumroad purchase</p>
+            </div>
+            <p class="hint" style="margin-bottom:10px; color:#f9e2af">
+              Limited availability. <a id="wizard-hosted-subscribe-link" href="#" class="api-link" style="cursor:pointer">Subscribe on Gumroad ↗</a>
+            </p>
           </div>
           <!-- Ollama: base URL input (shown only for Ollama) -->
           <div id="wizard-ollama-extra" style="display:none">

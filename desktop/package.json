@@ -1,6 +1,6 @@
 {
   "name": "thought-tidy-desktop",
-  "version": "1.5.9",
+  "version": "1.6.0",
   "description": "Thought Tidy — AI writing assistant desktop app (tray + global hotkey)",
   "main": "main.js",
   "private": true,

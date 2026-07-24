@@ -16,7 +16,6 @@ files:
     to:   "renderer/results.css"
 
 asar: true
-asarIntegrity: true
 
 afterPack: scripts/after-pack.js
 
