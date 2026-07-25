@@ -102,8 +102,8 @@ the Software's source code is made available.
 
 The Software requires your own API keys from third-party AI providers
 (OpenAI, Anthropic, Google, GitHub) or a locally running instance (Ollama,
-LM Studio, Jan AI). The AI Application Assistance subscription uses
-OpenRouter as its backend. By using these providers you agree to:
+LM Studio, Jan AI), or a Thought Tidy Hosted AI subscription (see section
+4a). By using these providers you agree to:
 
 - Comply with the terms of service of each AI provider you use.
 - Accept that your text is transmitted to and processed by those providers,
@@ -122,14 +122,78 @@ third-party providers.
 
 ------------------------------------------------------------------------
 
+4a. THOUGHT TIDY HOSTED AI SUBSCRIPTION
+
+Thought Tidy Hosted AI is an optional add-on subscription that provides
+AI processing without requiring your own API key. When using this service
+you additionally agree to:
+
+Service tier and limits:
+
+  Standard ($10/month):
+    - 500 AI requests per calendar month (resets on the 1st)
+    - 500,000 tokens per month (input and output combined)
+    - Powered by Google Gemini 2.5 Flash via OpenRouter
+
+Device limit:
+    A single license may be used from up to 5 unique IP addresses within
+    any rolling 7-day window. A device slot is released automatically after
+    7 days of inactivity from that IP address. Slots are tied to IP address,
+    not device identity. Sharing a license key is a violation of these terms.
+
+License format:
+    XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX (issued by Gumroad)
+    Your license key must be entered together with the email address used
+    for your Gumroad purchase.
+
+Data handling:
+    When using Thought Tidy Hosted AI:
+    - Your text, email address, and license key are transmitted over HTTPS
+      to our Cloudflare-fronted endpoint (api.northpandalabs.com).
+    - Your email and a one-way hash of your license key are stored in our
+      Supabase database to track usage and verify your subscription.
+    - Your IP address is stored (unhashed) to enforce the 5-device limit.
+      IP records are automatically removed after 7 days of inactivity.
+    - Your text is forwarded to OpenRouter and Google Gemini 2.5 Flash.
+      It is not stored by us after the response is returned.
+      See OpenRouter's privacy policy: https://openrouter.ai/privacy
+    - We track call counts and token counts per email address for billing
+      and limit enforcement. We do not log the content of your requests.
+
+Subscription billing:
+    Subscriptions are billed monthly through Gumroad. Cancelling your
+    Gumroad subscription deactivates your license key. You may continue
+    using the Software with your own AI provider API keys at no cost after
+    cancellation.
+
+Prohibited use:
+    - Sharing, reselling, or distributing license keys is prohibited.
+    - Automated, scripted, or bulk usage is prohibited.
+    - Using this service to build a competing AI writing service is
+      prohibited (see section 3).
+
+Enforcement:
+    We may deactivate a license key without notice if we detect abuse,
+    key sharing, or usage that violates these terms.
+
+------------------------------------------------------------------------
+
 5. PAYMENTS AND REFUNDS
 
-Pro licenses are one-time purchases through Gumroad. All payment processing
-is handled by Gumroad.
+Pro licenses (for Pro features of the application) are one-time purchases
+through Gumroad. Thought Tidy Hosted AI is a recurring monthly subscription
+through Gumroad. All payment processing is handled by Gumroad.
 
-Refund policy: If a Pro license does not work as described within 30 days of
-purchase, contact northpandalabs@gmail.com for a full refund. We reserve the
-right to refuse refunds for abuse of this policy.
+Pro license refund policy: If a Pro license does not work as described within
+30 days of purchase, contact northpandalabs@gmail.com for a full refund. We
+reserve the right to refuse refunds for abuse of this policy.
+
+Hosted AI subscription refund policy: If the Hosted AI subscription does not
+work as described within 30 days of your first charge, contact
+northpandalabs@gmail.com for a full refund of that charge. Cancellations
+for future months take effect at the end of the current billing period.
+Partial-month refunds are not issued unless the service was unavailable for
+a material portion of the billing period.
 
 ------------------------------------------------------------------------
 
@@ -191,19 +255,65 @@ THIRD-PARTY AI PROVIDERS; LOSS OR CORRUPTION OF EXPORTED BACKUP FILES; OR
 ANY SECURITY INCIDENT AFFECTING YOUR API KEYS OR DEVICE (OUTSIDE OF OUR
 DIRECT NEGLIGENCE).
 
-OUR TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT YOU PAID FOR YOUR PRO
-LICENSE (OR $0 FOR THE FREE TIER).
+OUR TOTAL LIABILITY SHALL NOT EXCEED THE GREATER OF: (A) THE AMOUNT YOU
+PAID FOR A PRO LICENSE, IF ANY; (B) THE TOTAL SUBSCRIPTION FEES PAID TO US
+IN THE 12 MONTHS PRECEDING THE CLAIM; OR (C) $10 USD.
 
 ------------------------------------------------------------------------
 
-10. TERMINATION
+10. INDEMNIFICATION
+
+You agree to indemnify, defend, and hold harmless Panda Automation LLC, its
+officers, directors, employees, and agents from and against any and all
+claims, damages, losses, liabilities, costs, and expenses (including
+reasonable legal fees) arising out of or relating to:
+
+  (a) your use of or access to the Software or the Thought Tidy Hosted AI
+      service;
+  (b) your violation of any provision of this Agreement;
+  (c) your violation of any third-party right, including any AI provider
+      terms of service or acceptable use policy;
+  (d) any content or text you submit or process through the Software; or
+  (e) any claim that your use of the Software caused harm to a third party.
+
+This indemnification obligation survives termination of this Agreement.
+
+------------------------------------------------------------------------
+
+11. NO PROFESSIONAL ADVICE
+
+The Software is a writing assistance tool only. AI-generated output does
+not constitute legal, medical, financial, psychological, therapeutic, or
+any other form of professional advice. Do not rely on AI output for
+decisions that require professional expertise. Always consult a qualified
+professional for such matters.
+
+We expressly disclaim all liability for any action taken or not taken in
+reliance on AI-generated content produced by the Software.
+
+------------------------------------------------------------------------
+
+12. FORCE MAJEURE
+
+We are not liable for any failure or delay in performance caused by
+circumstances beyond our reasonable control, including but not limited to:
+internet or network outages; failures of third-party services (including
+Gumroad, OpenRouter, Cloudflare, Google, OpenAI, or any AI model provider);
+government actions or regulations; natural disasters; cyberattacks on
+infrastructure we do not control; or any other event outside our direct
+control. During such events our obligations under this Agreement are
+suspended for the duration of the force majeure condition.
+
+------------------------------------------------------------------------
+
+13. TERMINATION
 
 This Agreement terminates automatically if you fail to comply with its terms.
 Upon termination, cease all use and delete all copies of the Software.
 
 ------------------------------------------------------------------------
 
-11. OPEN SOURCE COMPONENTS
+14. OPEN SOURCE COMPONENTS
 
 The webextension-polyfill library is used under the Mozilla Public License
 2.0. Other dependencies are listed in package.json.
@@ -214,15 +324,35 @@ Nothing in this Agreement grants rights beyond those specified in that license.
 
 ------------------------------------------------------------------------
 
-12. GOVERNING LAW
+15. GOVERNING LAW AND DISPUTE RESOLUTION
 
-This Agreement is governed by applicable law. Disputes shall be resolved
-through good-faith negotiation first, then binding arbitration or a court of
-competent jurisdiction.
+This Agreement is governed by the laws of the State of Wyoming, USA, without
+regard to its conflict of law provisions.
+
+Dispute resolution: Disputes shall first be submitted to good-faith
+negotiation by emailing northpandalabs@gmail.com. If unresolved within
+30 days, disputes shall be resolved through binding individual arbitration
+administered under the rules of the American Arbitration Association (AAA),
+conducted in English, with the arbitrator's decision being final and
+enforceable in any court of competent jurisdiction.
+
+Class action waiver: TO THE MAXIMUM EXTENT PERMITTED BY LAW, YOU WAIVE ANY
+RIGHT TO BRING OR PARTICIPATE IN A CLASS ACTION, COLLECTIVE ACTION, OR
+REPRESENTATIVE PROCEEDING AGAINST US. ALL CLAIMS MUST BE BROUGHT IN YOUR
+INDIVIDUAL CAPACITY ONLY.
+
+Severability: If any provision of this Agreement is held to be invalid,
+illegal, or unenforceable, that provision shall be modified to the minimum
+extent necessary to make it enforceable, or severed if modification is not
+possible, and the remaining provisions shall continue in full force.
+
+Waiver: Our failure to enforce any right or provision of this Agreement does
+not constitute a waiver of that right or provision. Any waiver must be in
+writing and signed by an authorised representative of Panda Automation LLC.
 
 ------------------------------------------------------------------------
 
-13. ENTIRE AGREEMENT
+16. ENTIRE AGREEMENT
 
 This Agreement, together with the Privacy Policy at
 https://thoughttidy.app/legal/privacy
@@ -231,7 +361,7 @@ the parties.
 
 ------------------------------------------------------------------------
 
-14. TRADEMARKS
+17. TRADEMARKS
 
 All third-party product names, logos, and brand marks referenced in this
 Software or its documentation are the property of their respective owners:
@@ -252,7 +382,7 @@ these companies.
 
 ------------------------------------------------------------------------
 
-15. CONTACT
+18. CONTACT
 
 Questions: northpandalabs@gmail.com
 GitHub: https://github.com/northpandalabs/Thought-Tidy
