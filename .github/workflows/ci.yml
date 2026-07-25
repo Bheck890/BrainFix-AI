@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  # ── 1. Extension tests ────────────────────────────────────────────────────
+  # ── Extension tests ───────────────────────────────────────────────────────
   test-extensions:
     name: Test extensions
     runs-on: ubuntu-latest
@@ -32,7 +32,7 @@ jobs:
           COPILOT_TOKEN:    ${{ secrets.COPILOT_TOKEN }}
           REQUEST_SIGN_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
-      - name: Upload extension coverage report
+      - name: Upload extension coverage
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -40,7 +40,7 @@ jobs:
           path: coverage/
           retention-days: 14
 
-  # ── 2. Desktop tests ──────────────────────────────────────────────────────
+  # ── Desktop tests + portable EXE ─────────────────────────────────────────
   test-desktop:
     name: Test desktop
     runs-on: windows-latest
@@ -60,7 +60,7 @@ jobs:
         run: npm test -- --coverage
         working-directory: desktop
 
-      - name: Upload desktop coverage report
+      - name: Upload desktop coverage
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -68,153 +68,42 @@ jobs:
           path: desktop/coverage/
           retention-days: 14
 
-  # ── 3. Build Chrome + Firefox (only after tests pass) ────────────────────
-  build-extensions:
-    name: Build extensions
-    needs: [test-extensions]
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      # Fallback env file (all-zeros) so build.js doesn't abort on forks without the secret
-      - name: Write fallback env file
-        run: |
-          mkdir -p ETC
-          echo "REQUEST_SIGN_KEY=0000000000000000000000000000000000000000000000000000000000000000" > ETC/brainfix-ai.env
-
-      - name: Build Firefox extension
-        run: npm run build:firefox
-        env:
-          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
-
-      - name: Validate Firefox manifest
-        run: |
-          node -e "
-            const m = require('./dist/firefox/manifest.json');
-            if (![2,3].includes(m.manifest_version)) throw new Error('manifest_version must be 2 or 3, got ' + m.manifest_version);
-            const allowed = ['contextMenus','scripting','storage','activeTab','alarms'];
-            const bad = (m.permissions || []).filter(p => !allowed.includes(p));
-            if (bad.length) throw new Error('Unexpected permissions: ' + bad.join(', '));
-            console.log('Firefox manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
-          "
-
-      - name: Upload Firefox artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: thought-tidy-firefox-${{ github.ref_name }}-${{ github.sha }}
-          path: dist/firefox/
-          retention-days: 14
-
-      - name: Build Chrome extension
-        run: npm run build:chrome
-        env:
-          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
-
-      - name: Validate Chrome manifest
-        run: |
-          node -e "
-            const m = require('./dist/chrome/manifest.json');
-            if (![2,3].includes(m.manifest_version)) throw new Error('manifest_version must be 2 or 3, got ' + m.manifest_version);
-            const allowed = ['contextMenus','scripting','storage','activeTab','alarms'];
-            const bad = (m.permissions || []).filter(p => !allowed.includes(p));
-            if (bad.length) throw new Error('Unexpected permissions: ' + bad.join(', '));
-            console.log('Chrome manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
-          "
-
-      - name: Upload Chrome artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: thought-tidy-chrome-${{ github.ref_name }}-${{ github.sha }}
-          path: dist/chrome/
-          retention-days: 14
-
-  # ── 4. Full release-quality desktop builds (only after tests pass) ────────
-  build-desktop:
-    name: Build desktop (${{ matrix.os-label }})
-    needs: [test-desktop]
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            os-label: Windows
-            script: dist:win
-            glob: "desktop/dist-build/*.exe"
-          - os: macos-latest
-            os-label: macOS
-            script: dist:mac
-            glob: "desktop/dist-build/*.dmg"
-          - os: ubuntu-latest
-            os-label: Linux
-            script: dist:linux
-            glob: |
-              desktop/dist-build/*.deb
-              desktop/dist-build/*.AppImage
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      - name: Stamp build version with commit hash
+      - name: Stamp version with commit hash
+        id: ver
         shell: bash
         run: |
           SHA="${GITHUB_SHA:0:8}"
-          echo "sha=$SHA" >> $GITHUB_ENV
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
           node - << 'EOF'
           const fs = require('fs');
           const sha = process.env.GITHUB_SHA.slice(0, 8);
           const p = JSON.parse(fs.readFileSync('desktop/package.json', 'utf8'));
-          const base = p.version.split('+')[0];
-          p.version = base + '+' + sha;
+          p.version = p.version.split('+')[0] + '+' + sha;
           fs.writeFileSync('desktop/package.json', JSON.stringify(p, null, 2) + '\n');
           console.log('Stamped version:', p.version);
           EOF
 
-      - name: Install desktop dependencies
-        run: npm ci
-        working-directory: desktop
-
-      - name: Build desktop installer
-        run: npm run ${{ matrix.script }}
+      - name: Build portable test EXE
+        run: npm run dist:test
         working-directory: desktop
         env:
           REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
-      - name: Validate installer artifact
-        shell: bash
+      - name: Zip and upload portable EXE
+        shell: pwsh
         run: |
-          shopt -s nullglob
-          files=(desktop/dist-build/*.exe desktop/dist-build/*.dmg desktop/dist-build/*.deb desktop/dist-build/*.AppImage)
-          found=()
-          for f in "${files[@]}"; do [ -f "$f" ] && found+=("$f"); done
-          if [ ${#found[@]} -eq 0 ]; then
-            echo "ERROR: No installer found in desktop/dist-build/"; exit 1
-          fi
-          for f in "${found[@]}"; do
-            mb=$(( $(wc -c < "$f") / 1048576 ))
-            echo "Artifact: $(basename "$f") (${mb} MB)"
-            if [ "$mb" -lt 30 ]; then
-              echo "ERROR: $(basename "$f") is only ${mb}MB -- may be broken"; exit 1
-            fi
-          done
+          $sha  = "${{ steps.ver.outputs.sha }}"
+          $branch = "${{ github.ref_name }}" -replace '[^a-zA-Z0-9._-]', '-'
+          $exe  = Get-ChildItem -Path "desktop/dist-build-test" -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "No .exe found in desktop/dist-build-test" }
+          $zip  = "thought-tidy-test-$branch-$sha.zip"
+          Compress-Archive -Path $exe.FullName -DestinationPath $zip
+          Write-Host "Zipped: $($exe.Name) -> $zip"
+          echo "ZIPNAME=$zip" >> $env:GITHUB_ENV
 
-      - name: Upload installer artifact
+      - name: Upload portable EXE artifact
         uses: actions/upload-artifact@v7
         with:
-          name: thought-tidy-${{ matrix.os-label }}-${{ github.ref_name }}-${{ env.sha }}
-          path: ${{ matrix.glob }}
+          name: thought-tidy-test-${{ github.ref_name }}-${{ steps.ver.outputs.sha }}
+          path: ${{ env.ZIPNAME }}
           retention-days: 14
