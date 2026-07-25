@@ -1,11 +1,12 @@
 // content.js — DOM wiring only
 // wordCount, wordDiff, esc are globals from lib/text.js (loaded first by manifest)
 
-let savedRange  = null;
-let savedActive = null;   // element that had focus when context menu opened
-let savedStart  = 0;
-let savedEnd    = 0;
-let modal = null;
+let savedRange    = null;
+let savedActive   = null;   // element that had focus when context menu opened
+let savedStart    = 0;
+let savedEnd      = 0;
+let modal         = null;
+let _currentResults = []; // kept in module scope, not on the DOM node
 
 document.addEventListener("contextmenu", () => {
   const el = document.activeElement;
@@ -115,7 +116,7 @@ function showModal(originalText, results, loading) {
   overlay.appendChild(modalEl);
   document.body.appendChild(overlay);
   modal = overlay;
-  overlay._results = results || [];
+  _currentResults = results || [];
 
   closeBtn.addEventListener("click", removeModal);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) removeModal(); });
@@ -123,7 +124,7 @@ function showModal(originalText, results, loading) {
 
   overlay.querySelectorAll(".aie-copy").forEach(btn => {
     btn.addEventListener("click", () => {
-      const text = overlay._results[+btn.dataset.idx];
+      const text = _currentResults[+btn.dataset.idx];
       navigator.clipboard.writeText(text).catch(() => {});
       btn.textContent = "Copied!";
       setTimeout(() => (btn.textContent = "Copy"), 1600);
@@ -132,7 +133,7 @@ function showModal(originalText, results, loading) {
 
   overlay.querySelectorAll(".aie-replace").forEach(btn => {
     btn.addEventListener("click", () => {
-      replaceSelection(overlay._results[+btn.dataset.idx]);
+      replaceSelection(_currentResults[+btn.dataset.idx]);
       removeModal();
     });
   });
@@ -172,5 +173,6 @@ function handleEsc(e) { if (e.key === "Escape") removeModal(); }
 
 function removeModal() {
   if (modal) { modal.remove(); modal = null; }
+  _currentResults = [];
   document.removeEventListener("keydown", handleEsc);
 }

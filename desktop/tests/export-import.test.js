@@ -17,9 +17,10 @@ function makeDialog({ savePath = FAKE_PATH, cancelled = false, openPaths = [FAKE
   };
 }
 
-function makeFs({ content = FAKE_CONTENT, readThrows = false } = {}) {
+function makeFs({ content = FAKE_CONTENT, readThrows = false, fileSize = 1024 } = {}) {
   return {
     writeFileSync: jest.fn(),
+    statSync:      jest.fn().mockReturnValue({ size: fileSize }),
     readFileSync:  readThrows
       ? jest.fn().mockImplementation(() => { throw new Error("File not found"); })
       : jest.fn().mockReturnValue(content)
@@ -86,5 +87,17 @@ describe("makeBackupHandlers — openBackup", () => {
     const handlers = makeBackupHandlers(makeDialog(), makeFs({ readThrows: true }));
     const result   = await handlers.openBackup();
     expect(result).toBeNull();
+  });
+
+  test("returns null when file exceeds 50 MB size cap", async () => {
+    const handlers = makeBackupHandlers(makeDialog(), makeFs({ fileSize: 51 * 1024 * 1024 }));
+    const result   = await handlers.openBackup();
+    expect(result).toBeNull();
+  });
+
+  test("reads file when size is exactly at the 50 MB limit", async () => {
+    const handlers = makeBackupHandlers(makeDialog(), makeFs({ fileSize: 50 * 1024 * 1024 }));
+    const result   = await handlers.openBackup();
+    expect(result).toBe(FAKE_CONTENT);
   });
 });

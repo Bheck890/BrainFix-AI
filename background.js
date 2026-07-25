@@ -69,9 +69,14 @@ const PROVIDER_STORAGE_KEYS = [
   "openaiModel", "claudeModel", "geminiModel"
 ];
 
+// The extension calls cloud APIs directly; local providers (Ollama, LM Studio, Jan AI)
+// are desktop-only and are filtered out before every AI dispatch.
+const _EXT_LOCAL_IDS = new Set(["ollama", "lmstudio", "jan"]);
+
 // ── Run from popup (Process Selected Text button) ────────────────────────────
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type !== "run-from-popup") return;
+  if (sender.id !== browser.runtime.id) return;
   (async () => {
     const { tabId, actionVal, selectedText } = msg;
     const settings = await cryptoGet([
@@ -88,18 +93,20 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       systemPrompt = MENU_PROMPTS[actionVal];
       if (!systemPrompt) return;
     }
+    const basePrompt = systemPrompt;
     systemPrompt = buildPromptWithProfile(systemPrompt, settings);
 
     browser.tabs.sendMessage(tabId, { action: "show-loading", originalText: selectedText });
     try {
+      const cloudProviders = (settings.configuredProviders || []).filter(p => !_EXT_LOCAL_IDS.has(p.id));
       const { result, usedProvider, usedModel } = await callAIWithFallback(
-        settings.configuredProviders, settings.geminiModels, settings, systemPrompt, selectedText
+        cloudProviders, settings.geminiModels, settings, systemPrompt, selectedText, { basePrompt }
       );
       browser.tabs.sendMessage(tabId, { action: "show-results", originalText: selectedText, results: [result] });
 
       const today = todayDate();
 
-      const stored0 = await browser.storage.local.get(["historyLog", "historyFull"]);
+      const stored0 = await cryptoGet(["historyLog", "historyFull"]);
       const fresh = purgeOldLog(stored0.historyLog || []);
       fresh.push({
         timestamp: Date.now(), date: today, source: "extension",
@@ -116,12 +123,12 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         outputs: [result.slice(0, 5000)],
         ...cost
       });
-      await browser.storage.local.set({
+      await cryptoSet({
         historyLog: fresh.slice(-200), lastAction: actionVal,
         historyFull: historyFull0.slice(-500)
       });
     } catch (err) {
-      browser.tabs.sendMessage(tabId, { action: "show-error", error: err.message });
+      browser.tabs.sendMessage(tabId, { action: "show-error", error: err.message.replace(/\b(sk-ant-[A-Za-z0-9_-]{4,}|sk-[A-Za-z0-9_-]{4,}|AIza[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|gho_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,})/g, "[key]") });
     }
   })();
   return true;
@@ -158,16 +165,18 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
     systemPrompt = MENU_PROMPTS[menuId];
     if (!systemPrompt) return;
   }
+  const basePrompt = systemPrompt;
   systemPrompt = buildPromptWithProfile(systemPrompt, settings);
 
   browser.tabs.sendMessage(tab.id, { action: "show-loading", originalText: selectedText });
 
   try {
+    const cloudProviders = (settings.configuredProviders || []).filter(p => !_EXT_LOCAL_IDS.has(p.id));
     const results = [];
     let usedProvider = "", usedModel = "";
     for (let i = 0; i < variants; i++) {
       const r = await callAIWithFallback(
-        settings.configuredProviders, settings.geminiModels, settings, systemPrompt, selectedText
+        cloudProviders, settings.geminiModels, settings, systemPrompt, selectedText, { basePrompt }
       );
       results.push(r.result);
       usedProvider = r.usedProvider;
@@ -178,7 +187,7 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
     const lastAction = menuId.startsWith("dyn-") ? menuId.replace("dyn-", "custom-") : menuId;
     const today = todayDate();
 
-    const stored1 = await browser.storage.local.get(["historyLog", "historyFull"]);
+    const stored1 = await cryptoGet(["historyLog", "historyFull"]);
     const fresh = purgeOldLog(stored1.historyLog || []);
     fresh.push({
       timestamp: Date.now(), date: today, source: "extension",
@@ -196,12 +205,12 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
       outputs: results.map(r => r.slice(0, 5000)),
       ...cost
     });
-    await browser.storage.local.set({
+    await cryptoSet({
       lastAction,
       historyLog: fresh.slice(-200),
       historyFull: historyFull1.slice(-500)
     });
   } catch (err) {
-    browser.tabs.sendMessage(tab.id, { action: "show-error", error: err.message });
+    browser.tabs.sendMessage(tab.id, { action: "show-error", error: err.message.replace(/\b(sk-ant-[A-Za-z0-9_-]{4,}|sk-[A-Za-z0-9_-]{4,}|AIza[A-Za-z0-9_-]{4,}|ghp_[A-Za-z0-9_]{4,}|gho_[A-Za-z0-9_]{4,}|github_pat_[A-Za-z0-9_]{4,})/g, "[key]") });
   }
 });

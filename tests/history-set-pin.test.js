@@ -77,10 +77,10 @@ describe("hashPin round-trip — stored hash is verifiable", () => {
     expect(await verifyPin("wrongpin", hash)).toBe(false);
   });
 
-  test("empty pin hashes deterministically", async () => {
-    const h1 = await hashPin("");
-    const h2 = await hashPin("");
-    expect(h1).toBe(h2);
+  test("empty pin can be hashed and verified", async () => {
+    const hash = await hashPin("");
+    expect(await verifyPin("", hash)).toBe(true);
+    expect(await verifyPin("notempty", hash)).toBe(false);
   });
 });
 

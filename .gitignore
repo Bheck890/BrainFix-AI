@@ -2,11 +2,16 @@
 node_modules/
 coverage/
 dist/
+release/
+Extension/
 desktop/dist-build/
 browser-polyfill.js
 .DS_Store
 Thumbs.db
 *.log
+
+# Local VS Code workspace config (personal tasks, settings -- not for repo)
+.vscode/
 
 # Claude Code local settings — contains machine-specific paths
 .claude/settings.local.json
@@ -20,3 +25,5 @@ AgenticFlyWheel
 .claude
 plans
 desktop/dist-build-test
+.wrangler
+supabase

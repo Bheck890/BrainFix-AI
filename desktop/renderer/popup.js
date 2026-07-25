@@ -22,7 +22,7 @@ window.buildSlotActions = (box) => {
   return [copyBtn, copyCloseBtn];
 };
 
-const PROVIDER_LABELS = { openai: "OpenAI", claude: "Claude", gemini: "Gemini", copilot: "GitHub Models", ollama: "Ollama" };
+const PROVIDER_LABELS = { openai: "OpenAI", claude: "Claude", gemini: "Gemini", copilot: "GitHub Models", ollama: "Ollama", lmstudio: "LM Studio", jan: "Jan AI", hosted: "Thought Tidy AI" };
 
 const STORAGE_KEYS = [
   "configuredProviders", "geminiModels",
@@ -45,6 +45,8 @@ function updateFooter() {
     const label = PROVIDER_LABELS[p.id] || p.id;
     const model = p.id === "gemini"
       ? (s.geminiModels?.find(Boolean) || p.model || "")
+      : p.id === "hosted"
+      ? (p.a3yn9n || "")
       : (p.model || "");
     badge.textContent = model ? `${label} · ${model}` : label;
   } else {

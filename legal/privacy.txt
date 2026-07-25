@@ -1,7 +1,7 @@
 PRIVACY POLICY -- THOUGHT TIDY
 
 Effective date: 2026-05-25
-Last updated: 2026-06-11
+Last updated: 2026-07-23
 Contact: northpandalabs@gmail.com
 
 ------------------------------------------------------------------------
@@ -16,11 +16,16 @@ Source code: https://github.com/northpandalabs/Thought-Tidy
 
 THE SHORT VERSION
 
-We do not collect, store, or transmit your personal data or your text to
-our servers -- because we don't have any servers.
+For self-configured providers (OpenAI, Anthropic, Google, local Ollama):
+We do not collect, store, or transmit your personal data or text to our
+servers. Your text goes directly from your device to the AI provider. We
+never see it.
 
-Your text goes directly from your device to whichever AI provider you
-configured (OpenAI, Anthropic, Google, or local Ollama). We never see it.
+For Thought Tidy Hosted AI subscribers: your text is routed through our
+Cloudflare endpoint and forwarded to OpenRouter and the AI model. We store
+your email, a hash of your license key, your IP address (for device
+limiting), and call/token counts. We do not store the content of your
+requests after the AI response is returned.
 
 ------------------------------------------------------------------------
 
@@ -28,19 +33,25 @@ WHAT DATA IS INVOLVED AND WHERE IT GOES
 
 1. Text you process
 
-When you run an action (Fix Spelling & Grammar, Improve Writing, Make
-Professional, Brain Dump -> Clear Text, Idea -> Prompt, Sound Like Me,
-Sound Human, Make Formal, Make Casual, Shorten, Expand, or any custom
-prompt you create), your text is sent directly from your device to the AI
-provider you have configured. It passes through no Thought Tidy server.
-We cannot see it, log it, or access it.
+Self-configured providers (OpenAI, Anthropic, Google, GitHub, local AI):
+When you run any action, your text is sent directly from your device to the
+AI provider you configured. It passes through no Thought Tidy server. We
+cannot see it, log it, or access it. Ollama, LM Studio, and Jan AI run
+entirely on your own machine -- no text leaves your device at all.
 
-When you request multiple suggestions (up to 4 variants), each variant is
-a separate request to the same provider under the same conditions. No
-additional data is collected.
+Thought Tidy Hosted AI subscribers:
+When using the Hosted AI provider, your text is transmitted over HTTPS to
+our Cloudflare-fronted endpoint (api.northpandalabs.com), which forwards it
+to our AI gateway service, which forwards it to OpenRouter, which forwards it
+to the AI model (Google Gemini 2.5 Flash for Basic, OpenAI GPT-4o-mini for
+Pro). The AI response is returned to your device. We do not store the
+content of your requests or responses on our servers after the response is
+delivered. OpenRouter processes your text under their privacy policy:
+https://openrouter.ai/privacy
 
-Ollama runs entirely on your own machine -- no text leaves your device at
-all when using Ollama.
+Requests are signed with a per-request HMAC signature and unique nonce.
+Replayed or tampered requests are rejected by the Cloudflare Worker before
+reaching the AI backend.
 
 2. API keys
 
@@ -54,11 +65,30 @@ Your AI provider API keys are stored locally on your device only, encrypted:
 API keys never leave your device except to authenticate with their
 respective AI provider.
 
-3. Pro license verification
+3. License verification
 
+Pro license (one-time, for app features):
 When you activate a Pro license, your email address and license key are sent
 to Gumroad's API solely to verify validity. This is not stored on our
 servers. After verification, both are stored locally on your device only.
+
+Thought Tidy Hosted AI subscription license:
+When you use the Hosted AI provider, your email address and license key are
+sent to our server with each request (or served from a 24-hour server-side
+cache). We store the following in our Supabase database:
+
+  - Your email address
+  - A SHA-256 hash of your license key (the key itself is never stored)
+  - Your IP address, for device-limit enforcement
+    (auto-deleted after 7 days of inactivity)
+  - Call counts and token counts, for usage-limit enforcement
+    (no request content -- only counts)
+  - License status and tier (Basic or Pro)
+
+This data is held only as long as your subscription is active plus a
+reasonable retention period for abuse prevention. Contact
+northpandalabs@gmail.com to request deletion.
+
 Gumroad's privacy policy: https://gumroad.com/privacy
 
 4. Usage history
@@ -73,12 +103,14 @@ full all-time history.
 5. Profile data (Sound Like Me)
 
 Your name, role, writing style, and personal context are stored locally only.
-This data is included in prompts sent to your AI provider when using
-profile-based actions (Sound Like Me, Inject into every prompt). It is not
-sent to us.
+When the "Inject into every prompt" toggle is enabled, this data is prepended
+to the system prompt sent to your PRIMARY configured AI provider only. If that
+provider fails or rate-limits and a fallback provider is used, the fallback
+receives only the base task instruction -- your profile data is NOT forwarded
+to fallback providers. This data is never sent to us.
 
-If you load a profile from a URL or GitHub Gist, that URL is accessed
-directly from your device. No request is routed through our servers.
+If you load a profile context from a URL, that URL is accessed directly from
+your device. No request is routed through our servers.
 
 6. Export / Import backup (.ttbackup)
 
@@ -130,12 +162,18 @@ WHAT WE DO NOT COLLECT
 
 THIRD-PARTY SERVICES
 
-OpenAI       -- AI processing (if configured)   -- https://openai.com/privacy
-Anthropic    -- AI processing (if configured)   -- https://www.anthropic.com/privacy
-Google       -- AI processing (if configured)   -- https://policies.google.com/privacy
-Ollama       -- Local AI, no data leaves device -- N/A
-Gumroad      -- Payments and license checks     -- https://gumroad.com/privacy
-GitHub       -- Source code hosting             -- https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
+OpenAI         -- AI processing (if configured)        -- https://openai.com/privacy
+Anthropic      -- AI processing (if configured)        -- https://www.anthropic.com/privacy
+Google         -- AI processing (if configured)        -- https://policies.google.com/privacy
+GitHub Models  -- AI processing (if configured)        -- https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
+Ollama         -- Local AI, no data leaves device      -- N/A
+LM Studio      -- Local AI, no data leaves device      -- N/A
+Jan AI         -- Local AI, no data leaves device      -- N/A
+OpenRouter     -- AI processing (Hosted AI subscribers) -- https://openrouter.ai/privacy
+Cloudflare     -- Request routing (Hosted AI subscribers) -- https://www.cloudflare.com/privacypolicy/
+Supabase       -- Database (Hosted AI subscribers)       -- https://supabase.com/privacy
+Gumroad        -- Payments and license checks           -- https://gumroad.com/privacy
+GitHub         -- Source code hosting                   -- https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
 
 We are not responsible for the data practices of these services.
 

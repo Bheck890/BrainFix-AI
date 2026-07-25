@@ -15,7 +15,11 @@ function fetchDownloadsJson() {
       headers: { 'User-Agent': 'thought-tidy-updater' }
     }, res => {
       let body = '';
-      res.on('data', c => { body += c; });
+      const MAX_BODY = 64 * 1024;
+      res.on('data', c => {
+        body += c;
+        if (body.length > MAX_BODY) { req.destroy(); reject(new Error('Update response too large')); }
+      });
       res.on('end', () => {
         try { resolve(JSON.parse(body)); }
         catch { reject(new Error('Invalid downloads.json response')); }
@@ -49,7 +53,7 @@ async function checkNow(store) {
   if (!latest) return null;
 
   const github_url = typeof data.github_url === 'string' &&
-    /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/.test(data.github_url)
+    /^https:\/\/github\.com\/northpandalabs\/Thought-Tidy$/.test(data.github_url)
     ? data.github_url : null;
 
   const current   = app.getVersion();

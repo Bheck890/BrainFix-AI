@@ -6,10 +6,12 @@ on:
       - 'v*'
 
 jobs:
-  # ── Tests: Firefox extension + Windows desktop only ───────────────────────
-  test-extensions:
-    name: Test extensions (Firefox)
+  # ── Chrome + Firefox extensions ───────────────────────────────────────────
+  extensions:
+    name: Build + release extensions
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v6
@@ -19,13 +21,22 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
-      - run: npm test
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run extension tests
+        run: npm test
+        env:
+          OPENAI_API_KEY:   ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY:   ${{ secrets.GOOGLE_API_KEY }}
+          CLAUDE_API_KEY:   ${{ secrets.CLAUDE_API_KEY }}
+          COPILOT_TOKEN:    ${{ secrets.COPILOT_TOKEN }}
+          REQUEST_SIGN_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
       - name: Build Firefox
         run: npm run build:firefox
         env:
-          LICENSE_CIPHER_KEY: ${{ secrets.LICENSE_CIPHER_KEY }}
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
       - name: Validate Firefox manifest
         run: |
@@ -38,7 +49,63 @@ jobs:
             console.log('Firefox manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
           "
 
-  test-desktop-windows:
+      - name: Build Chrome
+        run: npm run build:chrome
+        env:
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
+
+      - name: Validate Chrome manifest
+        run: |
+          node -e "
+            const m = require('./dist/chrome/manifest.json');
+            if (![2,3].includes(m.manifest_version)) throw new Error('manifest_version must be 2 or 3, got ' + m.manifest_version);
+            const allowed = ['contextMenus','scripting','storage','activeTab','alarms'];
+            const bad = (m.permissions || []).filter(p => !allowed.includes(p));
+            if (bad.length) throw new Error('Unexpected permissions: ' + bad.join(', '));
+            console.log('Chrome manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
+          "
+
+      - name: Scan for sensitive strings
+        run: |
+          node -e "
+            const fs   = require('fs');
+            const path = require('path');
+            const BANNED = [
+              'supabase.co', 'openrouter', 'hyper-responder',
+              'rjzxlaxgqhajzdriubdi', 'ocxnrnmfstklptwkeggw',
+              'kViVsaIZ0LyVZ8cWuZNG2g',
+            ];
+            function scan(dir) {
+              for (const entry of fs.readdirSync(dir)) {
+                const full = path.join(dir, entry);
+                if (fs.statSync(full).isDirectory()) { scan(full); continue; }
+                if (!['.js','.json','.html'].some(e => full.endsWith(e))) continue;
+                const src = fs.readFileSync(full, 'utf8');
+                for (const b of BANNED) {
+                  if (src.includes(b)) { console.error('FAIL: ' + b + ' found in ' + full); process.exit(1); }
+                }
+              }
+            }
+            scan('dist/firefox'); scan('dist/chrome');
+            console.log('Clean -- no sensitive strings found.');
+          "
+
+      - name: Zip extensions
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd dist/firefox && zip -r "../../thought-tidy-firefox-${VERSION}.zip" . && cd ../..
+          cd dist/chrome  && zip -r "../../thought-tidy-chrome-${VERSION}.zip"  . && cd ../..
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Attach extensions to release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            thought-tidy-firefox-${{ env.VERSION }}.zip
+            thought-tidy-chrome-${{ env.VERSION }}.zip
+
+  # ── Desktop tests (Windows) ───────────────────────────────────────────────
+  test-desktop:
     name: Test desktop (Windows)
     runs-on: windows-latest
 
@@ -57,55 +124,10 @@ jobs:
         run: npm test
         working-directory: desktop
 
-  # ── Extensions build + release ────────────────────────────────────────────
-  extensions:
-    name: Build and release extensions
-    needs: [test-extensions]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Set release version from tag
-        run: |
-          node - << 'EOF'
-          const fs = require('fs');
-          const tag = process.env.GITHUB_REF_NAME.replace(/^v/, '');
-          const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          p.version = tag;
-          fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
-          console.log('Set package.json to', tag);
-          EOF
-
-      - run: npm ci
-      - run: npm run build
-        env:
-          LICENSE_CIPHER_KEY: ${{ secrets.LICENSE_CIPHER_KEY }}
-
-      - name: Zip Chrome
-        run: cd dist/chrome && zip -r ../../thought-tidy-chrome.zip . && cd ../..
-
-      - name: Zip Firefox
-        run: cd dist/firefox && zip -r ../../thought-tidy-firefox.zip . && cd ../..
-
-      - name: Attach to release
-        uses: softprops/action-gh-release@v3
-        with:
-          files: |
-            thought-tidy-chrome.zip
-            thought-tidy-firefox.zip
-
-  # ── Desktop builds + release (one job per platform) ───────────────────────
+  # ── Desktop installers (Windows / macOS / Linux) ──────────────────────────
   desktop:
     name: Desktop (${{ matrix.os-label }})
-    needs: [test-desktop-windows]
+    needs: [test-desktop]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -156,7 +178,7 @@ jobs:
         run: npm run ${{ matrix.script }}
         working-directory: desktop
         env:
-          LICENSE_CIPHER_KEY: ${{ secrets.LICENSE_CIPHER_KEY }}
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
       - name: Validate installer artifact
         shell: bash
@@ -172,7 +194,7 @@ jobs:
             mb=$(( $(wc -c < "$f") / 1048576 ))
             echo "Artifact: $(basename "$f") (${mb} MB)"
             if [ "$mb" -lt 30 ]; then
-              echo "ERROR: $(basename "$f") is only ${mb}MB — may be broken"; exit 1
+              echo "ERROR: $(basename "$f") is only ${mb}MB -- may be broken"; exit 1
             fi
           done
 

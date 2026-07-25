@@ -16,6 +16,8 @@ files:
   - lib-node/**
   - renderer/**
 
+asar: true
+
 afterPack: scripts/after-pack.js
 
 extraResources:

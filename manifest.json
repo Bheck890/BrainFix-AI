@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Thought Tidy",
-  "version": "1.5.9",
+  "version": "1.6.0",
   "description": "AI writing assistant. Fix, rewrite, or transform text in seconds. Works with OpenAI, Claude, Gemini, GitHub Copilot, or Ollama.",
   "icons": {
     "16":  "icons/icon-16.png",
@@ -42,12 +42,13 @@
     "https://models.inference.ai.azure.com/*"
   ],
   "optional_host_permissions": [
-    "http://127.0.0.1:47391/*",
-    "http://127.0.0.1:11434/*",
-    "http://localhost:11434/*"
+    "http://127.0.0.1:47391/*"
   ],
   "options_ui": {
     "page": "options/options.html",
     "open_in_tab": true
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://api.northpandalabs.com https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://models.inference.ai.azure.com http://localhost:* http://127.0.0.1:*;"
   }
 }

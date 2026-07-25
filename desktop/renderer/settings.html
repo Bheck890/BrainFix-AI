@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://models.inference.ai.azure.com https://api.northpandalabs.com http://localhost:* http://127.0.0.1:*;">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Thought Tidy — Settings</title>
   <link rel="stylesheet" href="settings.css">
@@ -266,6 +267,10 @@
               <span class="wp-name">Jan AI <span class="pro-badge-sm">PRO</span></span>
               <span class="wp-sub">Local AI · OpenAI-compatible</span>
             </button>
+            <button class="wizard-provider-btn" data-provider="hosted">
+              <span class="wp-name">Thought Tidy AI <span class="pro-badge-sm">PRO</span></span>
+              <span class="wp-sub">Hosted · Subscription required</span>
+            </button>
           </div>
           <div class="wizard-footer">
             <button id="wizard-cancel-1" class="revert-btn">Cancel</button>
@@ -277,9 +282,20 @@
             <h3 id="wizard-provider-title"></h3>
             <button id="wizard-guide-btn" class="wizard-guide-btn" type="button" style="display:none">Setup Guide ↗</button>
           </div>
+          <!-- Hosted AI: email + info shown above the license key field -->
+          <div id="wizard-hosted-extra" style="display:none">
+            <div class="field" style="margin-bottom:12px">
+              <label for="wizard-hosted-email">Account Email</label>
+              <input type="email" id="wizard-hosted-email" placeholder="you@example.com" autocomplete="off" maxlength="256" style="width:100%;box-sizing:border-box;font-size:1.1em;padding:8px 10px;">
+              <p class="hint" style="margin-top:4px">Email used for your Gumroad purchase</p>
+            </div>
+            <p class="hint" style="margin-bottom:10px; color:#f9e2af">
+              Limited availability. <a id="wizard-hosted-subscribe-link" href="#" class="api-link" style="cursor:pointer">Subscribe on Gumroad ↗</a>
+            </p>
+          </div>
           <div id="wizard-api-key-row" class="field">
             <label>
-              API Key
+              <span id="wizard-key-label-text">API Key</span>
               <span id="wizard-key-link" class="api-link" style="cursor:pointer">Get key ↗</span>
             </label>
             <div class="key-row">
@@ -289,7 +305,7 @@
             </div>
             <div class="fetch-status" id="wizard-key-status"></div>
           </div>
-          <div class="field">
+          <div id="wizard-model-row" class="field">
             <label>Model <span class="fetch-status" id="wizard-model-status"></span></label>
             <div class="model-select-row">
               <select id="wizard-model-select" disabled>
@@ -493,6 +509,9 @@
       <p class="hint profile-intro">
         Describe yourself. When enabled, every action knows who you are, so output sounds like <em>you</em>, cleaned up.
       </p>
+      <p class="hint" style="color:var(--text-muted);margin-top:-6px">
+        Profile data is sent to your <strong>primary</strong> AI provider only. Fallback providers receive the base instruction without your personal details.
+      </p>
       <div class="profile-grid">
         <div class="field">
           <label for="profileName">Your Name</label>
@@ -532,6 +551,13 @@
           <div class="fetch-status" id="context-url-status"></div>
         </div>
       </div>
+      <details id="profile-data-preview" style="margin-top:14px;margin-bottom:4px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-muted);user-select:none;list-style:none;display:flex;align-items:center;gap:4px">
+          <span id="profile-preview-arrow" style="font-size:10px">&#9654;</span> What gets sent to your primary AI provider
+        </summary>
+        <pre id="profile-preview-body" style="margin:8px 0 0;padding:10px 12px;background:var(--surface1,#313244);border-radius:6px;font-size:11px;font-family:monospace;white-space:pre-wrap;color:var(--subtext0,#a6adc8);max-height:200px;overflow-y:auto;line-height:1.5">Enable the toggle above to see a preview.</pre>
+      </details>
+
       <div class="section-save-row">
         <button class="section-save-btn" id="profile-save-btn">Save</button>
         <span class="section-save-status" id="profile-save-status"></span>

@@ -167,7 +167,7 @@ const cover = `<svg width="1280" height="720" xmlns="http://www.w3.org/2000/svg"
 <circle cx="65" cy="408" r="3" fill="#45475a"/>
 <text x="80" y="413"
   font-family="'Segoe UI', system-ui, sans-serif"
-  font-size="15" fill="#cdd6f4">OpenAI, Claude, Gemini — bring your own API key</text>
+  font-size="15" fill="#cdd6f4">OpenAI, Claude, Gemini, GitHub Copilot, local AI</text>
 
 <!-- PRO section label -->
 <text x="58" y="458"

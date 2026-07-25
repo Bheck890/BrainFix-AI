@@ -1,6 +1,4 @@
-// tests/security-fixes.test.js
-// Structural and behavioural verification for the security fixes applied in the
-// Test5.2 audit. Each describe block names the finding it covers.
+// Structural and behavioural verification for security-sensitive code paths.
 
 const fs   = require("fs");
 const path = require("path");
@@ -11,9 +9,9 @@ function src(rel) {
   return fs.readFileSync(path.join(ROOT, rel), "utf8");
 }
 
-// ── H1: _isTestBuild() no longer reads window.__BTC_TEST_BUILD__ ──────────────
+// ── test-build flag isolation ──────────────────────────────────────────────────
 
-describe("H1 — XSS via window.__BTC_TEST_BUILD__ (FIXED)", () => {
+describe("test-build flag isolation", () => {
   const licenseSource = src("lib/license.js");
 
   test("lib/license.js does not reference __BTC_TEST_BUILD__", () => {
@@ -51,13 +49,12 @@ describe("H1 — XSS via window.__BTC_TEST_BUILD__ (FIXED)", () => {
   });
 });
 
-// ── H2: Offline demo grant has an expiry (7-day cap) ─────────────────────────
+// ── offline demo grant expiry ──────────────────────────────────────────────────
 
-describe("H2 — Offline demo grant expiry (FIXED)", () => {
+describe("offline demo grant expiry", () => {
   const licenseSource = src("lib/license.js");
 
-  test("verifyDemoMode stores _offlineDemoAt timestamp when Supabase is unreachable", () => {
-    // Find the verifyDemoMode function block and verify _offlineDemoAt is stored there.
+  test("verifyDemoMode stores _offlineDemoAt timestamp when server is unreachable", () => {
     const start = licenseSource.indexOf("async function verifyDemoMode");
     const end   = licenseSource.indexOf("\nasync function", start + 1);
     const fn    = licenseSource.slice(start, end);
@@ -77,29 +74,24 @@ describe("H2 — Offline demo grant expiry (FIXED)", () => {
     const end   = licenseSource.indexOf("\nasync function", start + 1);
     const fn    = licenseSource.slice(start, end);
     expect(fn).toContain("7 * DAY_MS");
-    // The revoke path resets all demo-related keys
-    expect(fn).toContain("demoMode: false");
+    expect(fn).toContain('demoMode: "revoked"');
     expect(fn).toContain("_offlineDemoAt: 0");
   });
 });
 
-// ── H3: History race condition — single get/set per handler ──────────────────
+// ── history read atomicity ─────────────────────────────────────────────────────
 
-describe("H3 — History race condition (FIXED)", () => {
+describe("history read atomicity", () => {
   const bgSource = src("background.js");
 
-  test("background.js fetches historyLog and historyFull in a single get call", () => {
-    // Both keys must appear together in the same get([ … ]) invocation.
-    // We check that the combined pattern is present twice (one per handler).
-    const pattern = /browser\.storage\.local\.get\(\["historyLog",\s*"historyFull"\]\)/g;
+  test("background.js fetches historyLog and historyFull together in a single cryptoGet call", () => {
+    const pattern = /cryptoGet\(\["historyLog",\s*"historyFull"\]\)/g;
     const matches = bgSource.match(pattern);
     expect(matches).not.toBeNull();
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
-  test("background.js does not have separate get calls for historyLog and historyFull", () => {
-    // Separate calls would look like: get("historyLog") … get("historyFull")
-    // Those must not appear as independent single-key lookups for these two keys.
+  test("background.js does not make separate direct storage calls for historyLog and historyFull", () => {
     const isolatedLog  = /browser\.storage\.local\.get\("historyLog"\)/.test(bgSource);
     const isolatedFull = /browser\.storage\.local\.get\("historyFull"\)/.test(bgSource);
     expect(isolatedLog).toBe(false);
@@ -107,9 +99,9 @@ describe("H3 — History race condition (FIXED)", () => {
   });
 });
 
-// ── M6: Backup import allowlist ───────────────────────────────────────────────
+// ── backup import key allowlist ────────────────────────────────────────────────
 
-describe("M6 — Backup import allowlist (FIXED)", () => {
+describe("backup import key allowlist", () => {
   const sharedSettingsSource = src("lib/shared-settings.js");
 
   test("lib/shared-settings.js defines BACKUP_SETTINGS_KEYS as a Set", () => {
@@ -122,7 +114,6 @@ describe("M6 — Backup import allowlist (FIXED)", () => {
       const end   = sharedSettingsSource.indexOf("]);", start) + 3;
       return sharedSettingsSource.slice(start, end);
     })();
-    // Core settings that must be preserved through backup/restore
     expect(allowlistBlock).toContain("openaiKey");
     expect(allowlistBlock).toContain("claudeKey");
     expect(allowlistBlock).toContain("geminiKey");
@@ -134,7 +125,7 @@ describe("M6 — Backup import allowlist (FIXED)", () => {
     expect(sharedSettingsSource).toContain("BACKUP_SETTINGS_KEYS.has(k)");
   });
 
-  test("backup allowlist does not include internal keys (autoUpdaterEnabled, syncMeta)", () => {
+  test("backup allowlist does not include internal control keys", () => {
     const start = sharedSettingsSource.indexOf("const BACKUP_SETTINGS_KEYS");
     const end   = sharedSettingsSource.indexOf("]);", start) + 3;
     const block = sharedSettingsSource.slice(start, end);
@@ -144,15 +135,15 @@ describe("M6 — Backup import allowlist (FIXED)", () => {
   });
 });
 
-// ── M7: Context URL fetch restrictions ────────────────────────────────────────
+// ── context URL fetch restrictions ────────────────────────────────────────────
 
-describe("M7 — Context URL fetch restrictions (FIXED)", () => {
+describe("context URL fetch restrictions", () => {
   const sharedSettingsSource = src("lib/shared-settings.js");
 
   test("context URL fetch blocks localhost/127.0.0.1/::1", () => {
-    expect(sharedSettingsSource).toContain('u.hostname === "localhost"');
-    expect(sharedSettingsSource).toContain('u.hostname === "127.0.0.1"');
-    expect(sharedSettingsSource).toContain('u.hostname === "::1"');
+    expect(sharedSettingsSource).toContain('"localhost"');
+    expect(sharedSettingsSource).toContain('"127.0.0.1"');
+    expect(sharedSettingsSource).toContain('"::1"');
   });
 
   test("context URL fetch uses AbortController for timeout", () => {
@@ -168,22 +159,21 @@ describe("M7 — Context URL fetch restrictions (FIXED)", () => {
     expect(sharedSettingsSource).toContain("50_000");
   });
 
-  test("context URL fetch truncates oversized responses (does not reject)", () => {
-    // The fix slices the raw text instead of throwing, so users still get partial content.
+  test("context URL fetch truncates oversized responses", () => {
     expect(sharedSettingsSource).toContain("raw.slice(0, MAX_BYTES)");
   });
 });
 
-// ── M8: migrateExtensionKeys concurrent-call guard ───────────────────────────
+// ── migrateExtensionKeys guard ─────────────────────────────────────────────────
 
-describe("M8 — migrateExtensionKeys concurrent guard (FIXED)", () => {
+describe("migrateExtensionKeys guard", () => {
   const cryptoSource = src("lib/crypto-storage.js");
 
   test("lib/crypto-storage.js declares in-memory _mig boolean guard", () => {
     expect(cryptoSource).toContain("let _mig = false");
   });
 
-  test("migrateExtensionKeys short-circuits on concurrent call (_mig guard)", () => {
+  test("migrateExtensionKeys short-circuits on concurrent call", () => {
     const start = cryptoSource.indexOf("async function migrateExtensionKeys");
     const end   = cryptoSource.indexOf("\nasync function", start + 1);
     const fn    = cryptoSource.slice(start, end > start ? end : undefined);
@@ -192,12 +182,11 @@ describe("M8 — migrateExtensionKeys concurrent guard (FIXED)", () => {
   });
 });
 
-// ── L6: Enter key checks button disabled state ───────────────────────────────
+// ── Enter key disabled state check ────────────────────────────────────────────
 
-describe("L6 — Enter key respects button disabled state (FIXED)", () => {
+describe("Enter key disabled state check", () => {
   test("popup/popup.js checks btn.disabled before calling runProcess()", () => {
     const source = src("popup/popup.js");
-    // Verify the keydown handler contains the disabled guard
     const keydownIdx = source.indexOf('addEventListener("keydown"');
     expect(keydownIdx).toBeGreaterThan(-1);
     const snippet = source.slice(keydownIdx, keydownIdx + 300);
@@ -213,9 +202,9 @@ describe("L6 — Enter key respects button disabled state (FIXED)", () => {
   });
 });
 
-// ── L7: Clarify submit button uses cloneNode to remove stale handlers ─────────
+// ── clarify button handler cleanup ────────────────────────────────────────────
 
-describe("L7 — Clarify button handler de-duplication (FIXED)", () => {
+describe("clarify button handler cleanup", () => {
   test("lib/shared-popup.js uses cloneNode(true) to replace clarify-submit-btn", () => {
     const source = src("lib/shared-popup.js");
     expect(source).toContain("cloneNode(true)");
@@ -223,9 +212,9 @@ describe("L7 — Clarify button handler de-duplication (FIXED)", () => {
   });
 });
 
-// ── L9: quickAction history uses uid(), not Math.random() ────────────────────
+// ── quickAction history ID generation ─────────────────────────────────────────
 
-describe("L9 — quickAction history IDs use uid() (FIXED)", () => {
+describe("quickAction history ID generation", () => {
   const mainSource = src("desktop/main.js");
 
   test("desktop/main.js imports uid from lib/text", () => {
@@ -233,7 +222,6 @@ describe("L9 — quickAction history IDs use uid() (FIXED)", () => {
   });
 
   test("desktop/main.js does not use Math.random() for history entry IDs", () => {
-    // Math.random().toString(36) is the old ID pattern — must be gone.
     expect(mainSource).not.toContain("Math.random().toString(36)");
   });
 
@@ -252,9 +240,9 @@ describe("L9 — quickAction history IDs use uid() (FIXED)", () => {
   });
 });
 
-// ── L11: quickAction history includes systemPrompt field ─────────────────────
+// ── quickAction history systemPrompt inclusion ────────────────────────────────
 
-describe("L11 — quickAction history includes systemPrompt (FIXED)", () => {
+describe("quickAction history systemPrompt inclusion", () => {
   const mainSource = src("desktop/main.js");
 
   test("quickAction historyFull entry includes systemPrompt", () => {
@@ -276,9 +264,9 @@ describe("L11 — quickAction history includes systemPrompt (FIXED)", () => {
   });
 });
 
-// ── L13: optional_host_permissions narrowed from http://*/* ──────────────────
+// ── optional_host_permissions scope ───────────────────────────────────────────
 
-describe("L13 — optional_host_permissions narrowed (FIXED)", () => {
+describe("optional_host_permissions scope", () => {
   let manifest;
   beforeAll(() => {
     manifest = JSON.parse(src("manifest.json"));
@@ -289,14 +277,9 @@ describe("L13 — optional_host_permissions narrowed (FIXED)", () => {
     expect(ohp).not.toContain("http://*/*");
   });
 
-  test("manifest optional_host_permissions contains only specific loopback entries", () => {
+  test("manifest optional_host_permissions contains only the sync-server entry", () => {
     const ohp = manifest.optional_host_permissions || [];
-    // Only the sync server and Ollama local ports are legitimate
-    const allowed = new Set([
-      "http://127.0.0.1:47391/*",
-      "http://127.0.0.1:11434/*",
-      "http://localhost:11434/*"
-    ]);
+    const allowed = new Set(["http://127.0.0.1:47391/*"]);
     for (const entry of ohp) {
       expect(allowed.has(entry)).toBe(true);
     }
@@ -307,16 +290,18 @@ describe("L13 — optional_host_permissions narrowed (FIXED)", () => {
     expect(ohp).toContain("http://127.0.0.1:47391/*");
   });
 
-  test("manifest optional_host_permissions includes Ollama entries", () => {
+  test("manifest optional_host_permissions does not include local AI ports", () => {
     const ohp = manifest.optional_host_permissions || [];
-    expect(ohp).toContain("http://127.0.0.1:11434/*");
-    expect(ohp).toContain("http://localhost:11434/*");
+    expect(ohp).not.toContain("http://127.0.0.1:11434/*");
+    expect(ohp).not.toContain("http://localhost:11434/*");
+    expect(ohp).not.toContain("http://localhost:1234/*");
+    expect(ohp).not.toContain("http://localhost:1337/*");
   });
 });
 
-// ── L15: parseInt() calls include radix 10 ───────────────────────────────────
+// ── parseInt radix argument ────────────────────────────────────────────────────
 
-describe("L15 — parseInt() calls include radix (FIXED)", () => {
+describe("parseInt radix argument", () => {
   const FILES_TO_CHECK = [
     "background.js",
     "lib/shared-popup.js",
@@ -324,12 +309,10 @@ describe("L15 — parseInt() calls include radix (FIXED)", () => {
   ];
 
   for (const rel of FILES_TO_CHECK) {
-    test(`${rel} — every parseInt() call includes the radix argument`, () => {
+    test(`${rel} -- every parseInt() call includes the radix argument`, () => {
       const source = src(rel);
       const lines  = source.split("\n");
       const bare   = lines.filter((line, _i) => {
-        // Match parseInt( not immediately followed by something that leads to , 10
-        // Strategy: flag any line with parseInt( that does NOT contain ", 10"
         return /\bparseInt\s*\(/.test(line) && !/, 10\)/.test(line);
       });
       expect(bare).toHaveLength(0);

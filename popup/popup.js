@@ -105,9 +105,10 @@ async function init() {
   });
   document.getElementById("process-btn").addEventListener("click", runProcess);
 
-  const { historyLog: rawLog = [] } = await browser.storage.local.get("historyLog");
-  const purged = purgeOldLog(rawLog);
-  if (purged.length !== rawLog.length) await browser.storage.local.set({ historyLog: purged });
+  const _stored = await cryptoGet(["historyLog"]);
+  const rawLog  = _stored.historyLog || [];
+  const purged  = purgeOldLog(rawLog);
+  if (purged.length !== rawLog.length) await cryptoSet({ historyLog: purged });
 
   // Daily checks — fires for Gumroad, demo, and corp modes (at most once per 24 h each).
   if (s.licenseEmail || s.licenseKey || s.demoMode || s.corpMode) {

@@ -1,24 +1,10 @@
 {
   "_comment": "Source of truth for download URLs. On each release update 'version' and 'released' ONLY — desktop URLs are computed from filename_template at runtime. Fetch from: https://raw.githubusercontent.com/northpandalabs/Thought-Tidy/refs/heads/main/legal/downloads.json",
-  "version": "1.5.9",
-  "released": "2026-06-11",
+  "version": "1.6.0",
+  "released": "2026-07-23",
   "base_download_url": "https://github.com/northpandalabs/Thought-Tidy/releases/latest/download",
   "pro_url": "https://northpandalabs.gumroad.com/l/thought-tidy",
   "github_url": "https://github.com/northpandalabs/Thought-Tidy",
-  "meta": [
-    "qvy X|i|7Y3RwV8:r<LNp0R9JtX{]V?Ziy{=!W<v8t==ko}#l1oIj}qU? ZoFNfH7D~W=W|U\\NnV>Vuys6RK5P>vS!}C",
-    "tPMSnh>S7swupSZW6^[sJGQ[{[QOZm{5=PHKT{p^jY\\zqs\"yxh_vUs\\j\\SHXW75q5iyaWyUl|sQ\\OxY:49H~gn?#K:~MPfnQ8xzzuY\\nr\\q38n1{U95P\\N7sP^ypfEWR[z`[rxI^|\\oXyM\\F:ZQWIWl<fqq~Nh=qwUMw9m3njQPxUU|3i?HVKgu[K9lwKm6^|JsL|o7jvLpzgVQlr16ZfIwKmJ6x{JxWJ7kN{Lsy^WEr[^^WMy7\\W5>7R>`yIlNvQa7XkVuuGub;pKjWtVk[s2x}vl9fNYQr>iPJL6\\kV_z;{YssT<KIZ^S<ZsQA",
-    "u]NT>Lx:{hQLxW\\ ^zlpg9ZfjjM8\\;sv}4^SZ@YplL|B",
-    "loR8I{L<iJ=XY{g6r? sNr9gHPk`pmtH=W7MyzJ>HTJB",
-    "M@[ugMzGHDTKGw~qM6]ify:<wv@z|Y;oEOEUjnhxI}VB",
-    "i}6\"ZFsNtSK;iWpx iSM|n<wVV!wN7j;F}3=U^?[l59B",
-    "t KmL}Mph\\t79u9xR>!IL[Z|DRtX|nJ|R/QF;=]LUUlB",
-    "jqJvZ_0OzTRT_S:6|]\"LL5LGpUT}I`^R~^<}Pp]iHFZB",
-    "^xk>6Z=].jYMyMyz?9\"]7<o[gsQYk`Y1hK[NjYUaZO|B",
-    "6MHoYlvxOM|UrK!7qhzM0wlL;:3sSyQj[u^r\\[J ~rVB",
-    "IM=VVttSuGKJ;8o lRL7:~RJsf:z8YP8GZ7E\"R[Iy9tB",
-    "mT]kU=HrgUKQ|zIIXvMm8>tFJJNi]I`;m[z:~7`pRLJB"
-  ],
   "platforms": {
     "chrome": {
       "label": "Chrome Extension",

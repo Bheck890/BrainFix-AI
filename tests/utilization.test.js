@@ -182,49 +182,50 @@ describe("isProUnlocked", () => {
   });
 });
 
-describe("verifyWithGumroad — network errors", () => {
-  beforeEach(() => { global.fetch = jest.fn(); });
-  afterEach(() => { jest.clearAllMocks(); });
+// Gumroad is now called server-side via the proxy. These tests verify that
+// verifyWithGumroad correctly forwards proxy responses to the caller.
+describe("verifyWithGumroad — proxy responses", () => {
+  function makeStorage(deviceId = "test-device") {
+    return {
+      appGet: jest.fn().mockResolvedValue({ _deviceId: deviceId }),
+      appSet: jest.fn().mockResolvedValue(),
+    };
+  }
+  afterEach(() => { global.fetch = undefined; });
 
-  test("network failure returns invalid result with error message", async () => {
+  test("network failure returns invalid result with connection error", async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error("Network error"));
-    const result = await verifyWithGumroad("a@b.com", "KEY123");
+    const result = await verifyWithGumroad("a@b.com", "KEY123", makeStorage());
     expect(result.valid).toBe(false);
-    expect(result.error).toMatch(/Gumroad|connection/i);
+    expect(result.error).toMatch(/activation server|connection/i);
   });
 
-  test("Gumroad returns success:false → invalid", async () => {
+  test("proxy returns invalid key error → forwarded to caller", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ success: false })
+      json: async () => ({ valid: false, error: "Invalid license key" })
     });
-    const result = await verifyWithGumroad("a@b.com", "BADKEY");
+    const result = await verifyWithGumroad("a@b.com", "BADKEY", makeStorage());
     expect(result.valid).toBe(false);
     expect(result.error).toBe("Invalid license key");
   });
 
-  test("email mismatch on valid key → invalid", async () => {
+  test("proxy returns wrong email error → forwarded to caller", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        success: true,
-        purchase: { email: "other@b.com" }
-      })
+      json: async () => ({ valid: false, error: "Wrong email for this license key" })
     });
-    const result = await verifyWithGumroad("a@b.com", "KEY123");
+    const result = await verifyWithGumroad("a@b.com", "KEY123", makeStorage());
     expect(result.valid).toBe(false);
     expect(result.error).toMatch(/email/i);
   });
 
-  test("email case-insensitive match succeeds", async () => {
+  test("proxy returns valid → caller gets valid:true", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        success: true,
-        purchase: { email: "A@B.COM" }
-      })
+      json: async () => ({ valid: true })
     });
-    const result = await verifyWithGumroad("a@b.com", "KEY123");
+    const result = await verifyWithGumroad("a@b.com", "KEY123", makeStorage());
     expect(result.valid).toBe(true);
   });
 });
@@ -533,7 +534,7 @@ describe("callGemini — error handling", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  test("includes API key in URL", async () => {
+  test("sends API key as x-goog-api-key header (not in URL)", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -541,8 +542,10 @@ describe("callGemini — error handling", () => {
       })
     });
     await callGemini("AIza-test", "gemini-2.5-flash-lite", "Fix:", "text");
-    const url = global.fetch.mock.calls[0][0];
-    expect(url).toContain("AIza-test");
+    const url  = global.fetch.mock.calls[0][0];
+    const opts = global.fetch.mock.calls[0][1];
+    expect(url).not.toContain("AIza-test");
+    expect(opts.headers["x-goog-api-key"]).toBe("AIza-test");
   });
 });
 

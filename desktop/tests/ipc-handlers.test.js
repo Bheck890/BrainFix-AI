@@ -4,6 +4,7 @@
 const {
   makeStoreGetHandler,
   makeStoreSetHandler,
+  makeStoreDeleteHandler,
   makeClipboardReadHandler,
   makeClipboardWriteHandler,
   registerAll
@@ -192,5 +193,210 @@ describe("registerAll", () => {
     });
     handlers["close-popup"]();
     expect(closePopup).toHaveBeenCalledTimes(1);
+  });
+
+  test("open-url does nothing when url is not a string", () => {
+    const openURL   = jest.fn();
+    const handlers  = {};
+    const fakeIpc   = { handle: (name, fn) => { handlers[name] = fn; } };
+    registerAll(fakeIpc, {
+      store: makeStore(), clipboard: makeClipboard(),
+      openSettings: jest.fn(), closePopup: jest.fn(), openURL
+    });
+    handlers["open-url"](EVENT, 42);
+    expect(openURL).not.toHaveBeenCalled();
+  });
+
+  test("open-url does nothing for an invalid URL string", () => {
+    const openURL   = jest.fn();
+    const handlers  = {};
+    const fakeIpc   = { handle: (name, fn) => { handlers[name] = fn; } };
+    registerAll(fakeIpc, {
+      store: makeStore(), clipboard: makeClipboard(),
+      openSettings: jest.fn(), closePopup: jest.fn(), openURL
+    });
+    handlers["open-url"](EVENT, "not-a-url");
+    expect(openURL).not.toHaveBeenCalled();
+  });
+
+  test("open-url does nothing for a non-https URL", () => {
+    const openURL   = jest.fn();
+    const handlers  = {};
+    const fakeIpc   = { handle: (name, fn) => { handlers[name] = fn; } };
+    registerAll(fakeIpc, {
+      store: makeStore(), clipboard: makeClipboard(),
+      openSettings: jest.fn(), closePopup: jest.fn(), openURL
+    });
+    handlers["open-url"](EVENT, "http://example.com");
+    expect(openURL).not.toHaveBeenCalled();
+  });
+
+  test("open-url calls openURL for a valid https URL", () => {
+    const openURL   = jest.fn();
+    const handlers  = {};
+    const fakeIpc   = { handle: (name, fn) => { handlers[name] = fn; } };
+    registerAll(fakeIpc, {
+      store: makeStore(), clipboard: makeClipboard(),
+      openSettings: jest.fn(), closePopup: jest.fn(), openURL
+    });
+    handlers["open-url"](EVENT, "https://example.com");
+    expect(openURL).toHaveBeenCalledWith("https://example.com");
+  });
+
+  test("open-history and open-results do not throw when callbacks are omitted", () => {
+    const handlers = {};
+    const fakeIpc  = { handle: (name, fn) => { handlers[name] = fn; } };
+    registerAll(fakeIpc, {
+      store: makeStore(), clipboard: makeClipboard(),
+      openSettings: jest.fn(), closePopup: jest.fn(), openURL: jest.fn()
+    });
+    expect(() => handlers["open-history"]()).not.toThrow();
+    expect(() => handlers["open-results"]()).not.toThrow();
+  });
+});
+
+// ── makeBackupHandlers ────────────────────────────────────────────────────────
+
+const { makeBackupHandlers } = require("../ipc-handlers");
+
+describe("makeBackupHandlers openBackup size guard", () => {
+  function makeDialog(filePath) {
+    return {
+      showOpenDialog: async () => ({ canceled: false, filePaths: [filePath] }),
+      showSaveDialog: async () => ({ canceled: true })
+    };
+  }
+
+  test("returns null when selected file exceeds 50 MB", async () => {
+    const fs = {
+      statSync: () => ({ size: 51 * 1024 * 1024 }),
+      readFileSync: jest.fn()
+    };
+    const { openBackup } = makeBackupHandlers(makeDialog("/large.ttbackup"), fs, null);
+    const result = await openBackup();
+    expect(result).toBeNull();
+    expect(fs.readFileSync).not.toHaveBeenCalled();
+  });
+
+  test("reads file when size is within limit", async () => {
+    const fs = {
+      statSync: () => ({ size: 1024 }),
+      readFileSync: () => '{"settings":{}}'
+    };
+    const { openBackup } = makeBackupHandlers(makeDialog("/small.ttbackup"), fs, null);
+    const result = await openBackup();
+    expect(result).toBe('{"settings":{}}');
+  });
+
+  test("returns null when dialog is canceled", async () => {
+    const dialog = { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) };
+    const { openBackup } = makeBackupHandlers(dialog, {}, null);
+    expect(await openBackup()).toBeNull();
+  });
+});
+
+// ── makeStoreDeleteHandler ─────────────────────────────────────────────────────
+
+function makeStoreWithDelete(initial = {}) {
+  const data = { ...initial };
+  return {
+    get:    (key)      => data[key],
+    set:    (key, val) => { data[key] = val; },
+    delete: (key)      => { delete data[key]; },
+    store:  data
+  };
+}
+
+describe("makeStoreDeleteHandler", () => {
+  test("deletes a key when called with a string", () => {
+    const store   = makeStoreWithDelete({ provider: "openai" });
+    const handler = makeStoreDeleteHandler(store);
+    handler(EVENT, "provider");
+    expect(store.get("provider")).toBeUndefined();
+  });
+
+  test("deletes multiple keys when called with an array", () => {
+    const store   = makeStoreWithDelete({ provider: "openai", openaiKey: "sk-x" });
+    const handler = makeStoreDeleteHandler(store);
+    handler(EVENT, ["provider", "openaiKey"]);
+    expect(store.get("provider")).toBeUndefined();
+    expect(store.get("openaiKey")).toBeUndefined();
+  });
+
+  test("does not delete blocked keys", () => {
+    const store   = makeStoreWithDelete({ historyPin: "1234", provider: "openai" });
+    const handler = makeStoreDeleteHandler(store);
+    handler(EVENT, ["historyPin", "provider"]);
+    expect(store.get("historyPin")).toBe("1234");
+    expect(store.get("provider")).toBeUndefined();
+  });
+
+  test("skips delete gracefully when store.delete is not a function", () => {
+    const store   = makeStore({ provider: "openai" }); // makeStore has no .delete
+    const handler = makeStoreDeleteHandler(store);
+    expect(() => handler(EVENT, "provider")).not.toThrow();
+  });
+});
+
+// ── additional makeStoreGetHandler coverage ───────────────────────────────────
+
+describe("makeStoreGetHandler blocked-key branches", () => {
+  test("returns undefined for blocked key historyPin in string mode", () => {
+    const store   = makeStore({ historyPin: "1234" });
+    const handler = makeStoreGetHandler(store);
+    expect(handler(EVENT, "historyPin")).toBeUndefined();
+  });
+
+  test("filters blocked key out of array-mode results", () => {
+    const store   = makeStore({ historyPin: "1234", provider: "openai" });
+    const handler = makeStoreGetHandler(store);
+    const result  = handler(EVENT, ["historyPin", "provider"]);
+    expect("historyPin" in result).toBe(false);
+    expect(result.provider).toBe("openai");
+  });
+
+  test("filters blocked key out of defaults-object results", () => {
+    const store   = makeStore({ historyPin: "1234" });
+    const handler = makeStoreGetHandler(store);
+    const result  = handler(EVENT, { historyPin: "default" });
+    expect("historyPin" in result).toBe(false);
+  });
+});
+
+// ── additional makeStoreSetHandler coverage ───────────────────────────────────
+
+describe("makeStoreSetHandler blocked-key and guard branches", () => {
+  test("does not store blocked keys (historyPin, autoUpdaterEnabled, devMode)", () => {
+    const store   = makeStore();
+    const handler = makeStoreSetHandler(store);
+    handler(EVENT, { historyPin: "4321", autoUpdaterEnabled: true, devMode: true });
+    expect(store.get("historyPin")).toBeUndefined();
+    expect(store.get("autoUpdaterEnabled")).toBeUndefined();
+    expect(store.get("devMode")).toBeUndefined();
+  });
+
+  test("ignores null data without throwing", () => {
+    const store   = makeStore({ provider: "openai" });
+    const handler = makeStoreSetHandler(store);
+    handler(EVENT, null);
+    expect(store.get("provider")).toBe("openai");
+  });
+
+  test("ignores array data without throwing", () => {
+    const store   = makeStore();
+    const handler = makeStoreSetHandler(store);
+    handler(EVENT, ["key", "value"]);
+    expect(store.get("key")).toBeUndefined();
+  });
+});
+
+// ── makeClipboardWriteHandler: non-string guard ───────────────────────────────
+
+describe("makeClipboardWriteHandler non-string guard", () => {
+  test("does not write to clipboard when text is not a string", () => {
+    const cb      = makeClipboard("initial");
+    const handler = makeClipboardWriteHandler(cb);
+    handler(EVENT, 42);
+    expect(cb.readText()).toBe("initial");
   });
 });

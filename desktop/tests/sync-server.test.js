@@ -37,6 +37,8 @@ function request({ method = "GET", path = "/ping", token = null, body = null, or
 
 // ── test suite ─────────────────────────────────────────────────────────────────
 
+const EXT_ORIGIN = "chrome-extension://test-extension-id";
+
 describe("sync-server", () => {
   let server;
   let sessionToken;
@@ -62,7 +64,8 @@ describe("sync-server", () => {
       server.once("error",     reject);
     });
 
-    const ping = await request({ path: "/ping" });
+    // Extension origins receive the session token; use it for all authenticated tests
+    const ping = await request({ path: "/ping", origin: EXT_ORIGIN });
     sessionToken = JSON.parse(ping.body).token;
   });
 
@@ -91,8 +94,8 @@ describe("sync-server", () => {
 
   // ── GET /ping ─────────────────────────────────────────────────────────────────
 
-  test("GET /ping returns 200 with token and syncMeta — no auth needed", async () => {
-    const res = await request({ path: "/ping" });
+  test("GET /ping with extension origin returns token and syncMeta", async () => {
+    const res = await request({ path: "/ping", origin: EXT_ORIGIN });
     expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
     expect(typeof json.token).toBe("string");
@@ -100,10 +103,18 @@ describe("sync-server", () => {
     expect(json.syncMeta).toEqual({ lastChanged: "2026-05-24T00:00:00.000Z" });
   });
 
+  test("GET /ping without extension origin returns null token (prevents local-process spoofing)", async () => {
+    const res  = await request({ path: "/ping" });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.token).toBeNull();
+    expect(json.syncMeta).toBeDefined(); // syncMeta is still public
+  });
+
   test("GET /ping with no syncMeta in store returns syncMeta: null", async () => {
     const original = mockStore._data.syncMeta;
     mockStore._data.syncMeta = undefined;
-    const res  = await request({ path: "/ping" });
+    const res  = await request({ path: "/ping", origin: EXT_ORIGIN });
     const json = JSON.parse(res.body);
     expect(json.syncMeta).toBeNull();
     mockStore._data.syncMeta = original;
@@ -127,8 +138,6 @@ describe("sync-server", () => {
   });
 
   // ── GET /settings ─────────────────────────────────────────────────────────────
-
-  const EXT_ORIGIN = "chrome-extension://test-extension-id";
 
   test("GET /settings returns only defined SYNC_KEY values", async () => {
     const res  = await request({ path: "/settings", token: sessionToken, origin: EXT_ORIGIN });
@@ -234,5 +243,235 @@ describe("sync-server", () => {
   test("POST /unknown returns 404", async () => {
     const res = await request({ method: "POST", path: "/unknown", token: sessionToken, body: {} });
     expect(res.status).toBe(404);
+  });
+
+  // ── _isValidProvider branch coverage (via configuredProviders) ────────────────
+
+  test("POST /settings accepts valid provider with minimal fields", async () => {
+    const res = await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "my-provider" }] } } });
+    expect(res.status).toBe(200);
+    expect(Array.isArray(mockStore._data.configuredProviders)).toBe(true);
+  });
+
+  test("POST /settings rejects configuredProviders containing null (falsy element)", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [null] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects configuredProviders containing an array element", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [[]] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with missing id field", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ name: "no-id" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with empty string id", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with non-string baseUrl", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: 123 }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings accepts provider with empty baseUrl (falsy — skips URL parse)", async () => {
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "" }] } } });
+    expect(mockStore._data.configuredProviders[0]).toMatchObject({ id: "p", baseUrl: "" });
+  });
+
+  test("POST /settings rejects provider with invalid baseUrl (URL parse throws)", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "not-a-url" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with ftp baseUrl (wrong protocol)", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "ftp://example.com" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with SSRF-blocked baseUrl (169.254.x.x)", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "http://169.254.169.254/metadata" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings accepts provider with valid https baseUrl", async () => {
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "https://api.example.com" }] } } });
+    expect(mockStore._data.configuredProviders[0]).toMatchObject({ id: "p" });
+  });
+
+  test("POST /settings rejects provider with numeric apiKey (not null, not string)", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", apiKey: 42 }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings accepts provider with apiKey: null", async () => {
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", apiKey: null }] } } });
+    expect(mockStore._data.configuredProviders[0]).toMatchObject({ id: "p", apiKey: null });
+  });
+
+  test("POST /settings rejects provider with numeric model", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", model: 42 }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  // ── validateSyncValue: geminiModels / customPrompts / actionSettings (line 49) ──
+
+  test("POST /settings accepts geminiModels as an array", async () => {
+    mockStore._data.geminiModels = undefined;
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { geminiModels: ["gemini-2.0-flash"] } } });
+    expect(mockStore._data.geminiModels).toEqual(["gemini-2.0-flash"]);
+  });
+
+  test("POST /settings rejects geminiModels as a string", async () => {
+    mockStore._data.geminiModels = ["existing"];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { geminiModels: "not-an-array" } } });
+    expect(mockStore._data.geminiModels).toEqual(["existing"]);
+  });
+
+  test("POST /settings accepts customPrompts as an array", async () => {
+    mockStore._data.customPrompts = undefined;
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { customPrompts: [{ text: "hello" }] } } });
+    expect(Array.isArray(mockStore._data.customPrompts)).toBe(true);
+  });
+
+  test("POST /settings accepts actionSettings as an array", async () => {
+    mockStore._data.actionSettings = undefined;
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { actionSettings: [] } } });
+    expect(Array.isArray(mockStore._data.actionSettings)).toBe(true);
+  });
+
+  // ── extended SSRF coverage (IPv6 and additional cloud metadata IPs) ───────────
+
+  test("POST /settings rejects provider with IPv6 loopback baseUrl ([::1])", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "http://[::1]/metadata" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with Alibaba Cloud IMDS baseUrl (100.100.100.200)", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "http://100.100.100.200/latest/meta-data" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings rejects provider with AWS IPv6 IMDS baseUrl ([fd00:ec2::254])", async () => {
+    mockStore._data.configuredProviders = [];
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: [{ id: "p", baseUrl: "http://[fd00:ec2::254]/latest/meta-data" }] } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  // ── array length caps ─────────────────────────────────────────────────────────
+
+  test("POST /settings rejects configuredProviders exceeding 100 items", async () => {
+    mockStore._data.configuredProviders = [];
+    const tooMany = Array.from({ length: 101 }, (_, i) => ({ id: `p${i}` }));
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: tooMany } } });
+    expect(mockStore._data.configuredProviders).toEqual([]);
+  });
+
+  test("POST /settings accepts configuredProviders with exactly 100 items", async () => {
+    const exactly100 = Array.from({ length: 100 }, (_, i) => ({ id: `p${i}` }));
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { configuredProviders: exactly100 } } });
+    expect(mockStore._data.configuredProviders).toHaveLength(100);
+  });
+
+  test("POST /settings rejects geminiModels exceeding 100 items", async () => {
+    mockStore._data.geminiModels = [];
+    const tooMany = Array.from({ length: 101 }, (_, i) => `model-${i}`);
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { geminiModels: tooMany } } });
+    expect(mockStore._data.geminiModels).toEqual([]);
+  });
+
+  test("POST /settings rejects customPrompts exceeding 200 items", async () => {
+    mockStore._data.customPrompts = [];
+    const tooMany = Array.from({ length: 201 }, (_, i) => ({ text: `p${i}` }));
+    await request({ method: "POST", path: "/settings", token: sessionToken, origin: EXT_ORIGIN,
+      body: { settings: { customPrompts: tooMany } } });
+    expect(mockStore._data.customPrompts).toEqual([]);
+  });
+});
+
+// ── Rogue extension: second extension origin gets null token ──────────────────
+// Uses a fresh server instance because _authorizedExtensionOrigin is per-instance.
+
+describe("sync-server rogue extension prevention", () => {
+  let server2;
+  let port2;
+
+  beforeAll(async () => {
+    const s = { get() {}, set() {} };
+    server2 = startSyncServer(s, 0);
+    await new Promise((resolve, reject) => {
+      if (server2.listening) { port2 = server2.address().port; resolve(); return; }
+      server2.once("listening", () => { port2 = server2.address().port; resolve(); });
+      server2.once("error", reject);
+    });
+    // Let the legitimate first extension claim the token
+    await new Promise((resolve, reject) => {
+      const req = http.request(
+        { hostname: "127.0.0.1", port: port2, path: "/ping", method: "GET",
+          headers: { Origin: "chrome-extension://first-ext" } },
+        res => { res.resume(); res.on("end", resolve); }
+      );
+      req.on("error", reject);
+      req.end();
+    });
+  });
+
+  afterAll(() => new Promise(resolve => server2.close(resolve)));
+
+  test("a different extension origin receives null token after the first has connected", async () => {
+    const json = await new Promise((resolve, reject) => {
+      const req = http.request(
+        { hostname: "127.0.0.1", port: port2, path: "/ping", method: "GET",
+          headers: { Origin: "chrome-extension://rogue-ext" } },
+        res => {
+          let body = "";
+          res.on("data", c => { body += c; });
+          res.on("end", () => resolve(JSON.parse(body)));
+        }
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    expect(json.token).toBeNull();
   });
 });

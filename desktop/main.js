@@ -20,7 +20,8 @@ const store = new Store({ name: "thought-tidy-settings" });
 // values so migration and getters are safe to call repeatedly.
 
 const ENC_PREFIX = "enc1:";
-const _SENSITIVE = new Set(["openaiKey", "claudeKey", "geminiKey", "licenseEmail", "licenseKey", "_sbKey"]);
+const _SENSITIVE     = new Set(["openaiKey", "claudeKey", "geminiKey", "licenseEmail", "licenseKey", "demoMode", "corpMode"]);
+const _STRICT_KEYS   = new Set(["demoMode", "corpMode"]);
 const _SYNC_KEYS = new Set([
   "configuredProviders", "geminiModels",
   "openaiKey", "claudeKey", "geminiKey",
@@ -30,8 +31,15 @@ const _SYNC_KEYS = new Set([
   "licenseEmail", "licenseKey"
 ]);
 
+let _encWarnSent = false;
 function _encVal(v) {
-  if (!safeStorage.isEncryptionAvailable()) return v;
+  if (!safeStorage.isEncryptionAvailable()) {
+    if (!_encWarnSent) {
+      _encWarnSent = true;
+      console.warn("[security] safeStorage encryption unavailable -- API keys are stored unprotected on disk.");
+    }
+    return v;
+  }
   try { return ENC_PREFIX + safeStorage.encryptString(String(v)).toString("base64"); }
   catch { return v; }
 }
@@ -39,6 +47,11 @@ function _decVal(v) {
   if (typeof v !== "string" || !v.startsWith(ENC_PREFIX)) return v;
   try { return safeStorage.decryptString(Buffer.from(v.slice(ENC_PREFIX.length), "base64")); }
   catch { return v; }
+}
+function _decValStrict(v) {
+  if (typeof v !== "string" || !v.startsWith(ENC_PREFIX)) return null;
+  try { return safeStorage.decryptString(Buffer.from(v.slice(ENC_PREFIX.length), "base64")); }
+  catch { return null; }
 }
 function _encProviders(arr) {
   if (!Array.isArray(arr)) return arr;
@@ -49,17 +62,30 @@ function _decProviders(arr) {
   return arr.map(p => ({ ...p, apiKey: p.apiKey ? _decVal(p.apiKey) : p.apiKey }));
 }
 
+const _ARRAY_SENSITIVE = new Set(["historyFull", "historyLog"]);
+function _encArr(arr) {
+  return _encVal(JSON.stringify(Array.isArray(arr) ? arr : []));
+}
+function _decArr(v) {
+  if (typeof v !== "string" || !v.startsWith(ENC_PREFIX)) return Array.isArray(v) ? v : [];
+  try { return JSON.parse(_decVal(v)); } catch { return []; }
+}
+
 function makeEncryptingStore(raw) {
   return {
     get(key) {
       const v = raw.get(key);
+      if (_STRICT_KEYS.has(key)) return _decValStrict(v);
       if (_SENSITIVE.has(key)) return _decVal(v);
+      if (_ARRAY_SENSITIVE.has(key)) return _decArr(v);
       if (key === "configuredProviders") return _decProviders(v);
       return v;
     },
     set(key, val) {
       if (_SENSITIVE.has(key)) {
         raw.set(key, _encVal(val));
+      } else if (_ARRAY_SENSITIVE.has(key)) {
+        raw.set(key, _encArr(val));
       } else if (key === "configuredProviders") {
         raw.set(key, _encProviders(val));
       } else {
@@ -76,7 +102,12 @@ function makeEncryptingStore(raw) {
     },
     get store() {
       const s = { ...raw.store };
-      for (const k of _SENSITIVE) { if (k in s) s[k] = _decVal(s[k]); }
+      for (const k of _SENSITIVE) {
+        if (k in s) s[k] = _STRICT_KEYS.has(k) ? _decValStrict(s[k]) : _decVal(s[k]);
+      }
+      for (const k of _ARRAY_SENSITIVE) {
+        if (k in s) s[k] = _decArr(s[k]);
+      }
       if (s.configuredProviders) s.configuredProviders = _decProviders(s.configuredProviders);
       return s;
     }
@@ -105,18 +136,18 @@ function migrateToEncryptedKeys(raw) {
 let encStore = null;
 const isDev = process.argv.includes("--dev");
 
-// Runtime cipher key — read from env var or (dev only) ETC/brainfix-ai.env.
+// Runtime sign key -- read from env var or (dev only) ETC/brainfix-ai.env.
 // afterPack injects this into lib/license.js at build time; this is a fallback
 // for dev builds where the env var wasn't set during the build.
 function _readCipherKey() {
-  if (process.env.LICENSE_CIPHER_KEY) return process.env.LICENSE_CIPHER_KEY;
   if (app.isPackaged) return null; // installed build must rely on afterPack injection
+  if (process.env.REQUEST_SIGN_KEY) return process.env.REQUEST_SIGN_KEY;
   try {
     const etcFile = path.join(__dirname, "..", "ETC", "brainfix-ai.env");
     if (!fs.existsSync(etcFile)) return null;
     for (const line of fs.readFileSync(etcFile, "utf8").split("\n")) {
       const eq = line.indexOf("=");
-      if (eq > 0 && line.slice(0, eq).trim() === "LICENSE_CIPHER_KEY")
+      if (eq > 0 && line.slice(0, eq).trim() === "REQUEST_SIGN_KEY")
         return line.slice(eq + 1).trim();
     }
   } catch {}
@@ -153,6 +184,18 @@ function rootPath(...parts) {
 
 const APP_ICON = rootPath("icons", "icon.png");
 
+// Prevent renderer pages from navigating away from their local file: URL.
+// Guards against XSS-induced location.href redirects that would load an
+// external page inside Electron with the preload still active.
+function _lockNavigation(win) {
+  win.webContents.on("will-navigate", (event, url) => {
+    let u;
+    try { u = new URL(url); } catch { event.preventDefault(); return; }
+    if (u.protocol !== "file:") event.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+}
+
 // ── Popup window ───────────────────────────────────────────────────────────────
 
 function createPopup() {
@@ -175,6 +218,7 @@ function createPopup() {
   });
 
   popupWin.loadFile(path.join(__dirname, "renderer", "popup.html"));
+  _lockNavigation(popupWin);
 
   popupWin.webContents.on("did-finish-load", () => applyZoomToWindow(popupWin));
 
@@ -235,6 +279,7 @@ function openResults() {
   });
   resultsWin.setMenu(null);
   resultsWin.loadFile(resultsHtml);
+  _lockNavigation(resultsWin);
   resultsWin.webContents.on("did-finish-load", () => applyZoomToWindow(resultsWin));
   if (isDev || IS_TEST_BUILD || store.get("devMode")) resultsWin.webContents.openDevTools({ mode: "detach" });
   resultsWin.webContents.on("before-input-event", (_, input) => {
@@ -267,8 +312,16 @@ function openGuide(hash) {
     }
   });
   guideWin.setMenu(null);
-  guideWin.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
+  guideWin.webContents.setWindowOpenHandler(({ url }) => {
+    try { const u = new URL(url); if (u.protocol === "https:") shell.openExternal(url); } catch {}
+    return { action: "deny" };
+  });
   guideWin.loadFile(path.join(__dirname, "renderer", "guide.html"), hash ? { hash } : {});
+  guideWin.webContents.on("will-navigate", (event, url) => {
+    let u;
+    try { u = new URL(url); } catch { event.preventDefault(); return; }
+    if (u.protocol !== "file:") event.preventDefault();
+  });
   guideWin.on("closed", () => { guideWin = null; });
 }
 
@@ -292,6 +345,7 @@ function openHistory() {
   });
   historyWin.setMenu(null);
   historyWin.loadFile(path.join(__dirname, "renderer", "history.html"));
+  _lockNavigation(historyWin);
   historyWin.on("closed", () => { historyWin = null; });
 }
 
@@ -316,14 +370,17 @@ function openSettings() {
   });
   settingsWin.setMenu(null);
   settingsWin.loadFile(path.join(__dirname, "renderer", "settings.html"));
+  _lockNavigation(settingsWin);
   settingsWin.webContents.on("did-finish-load", () => applyZoomToWindow(settingsWin));
   settingsWin.on("closed", () => { settingsWin = null; });
 
-  if (isDev || IS_TEST_BUILD || store.get("devMode")) settingsWin.webContents.openDevTools({ mode: "right" });
-  settingsWin.webContents.on("before-input-event", (_, input) => {
-    if (input.type === "keyDown" && input.key === "F12")
-      settingsWin.webContents.isDevToolsOpened() ? settingsWin.webContents.closeDevTools() : settingsWin.webContents.openDevTools({ mode: "right" });
-  });
+  if (isDev || IS_TEST_BUILD || store.get("devMode")) {
+    settingsWin.webContents.openDevTools({ mode: "right" });
+    settingsWin.webContents.on("before-input-event", (_, input) => {
+      if (input.type === "keyDown" && input.key === "F12")
+        settingsWin.webContents.isDevToolsOpened() ? settingsWin.webContents.closeDevTools() : settingsWin.webContents.openDevTools({ mode: "right" });
+    });
+  }
 }
 
 // ── Tray ───────────────────────────────────────────────────────────────────────
@@ -381,25 +438,27 @@ async function quickAction(action) {
     const { callAIWithFallback }                   = require("./lib-node/api");
     const { estimateCost }                         = require("../lib/pricing");
     const s = encStore.store;
-    let systemPrompt = buildPromptWithProfile(MENU_PROMPTS[action] || MENU_PROMPTS["fix-spelling"], s);
+    const rawBase      = MENU_PROMPTS[action] || MENU_PROMPTS["fix-spelling"];
     const grammarBlock = buildGrammarInstructions(s.grammarFilters);
-    if (grammarBlock) systemPrompt += "\n\n" + grammarBlock;
+    const basePrompt   = grammarBlock ? rawBase + "\n\n" + grammarBlock : rawBase;
+    const systemPrompt = buildPromptWithProfile(basePrompt, s);
     const { result, usedProvider, usedModel } = await callAIWithFallback(
-      s.configuredProviders || [], s.geminiModels || [null, null, null], s, systemPrompt, text
+      s.configuredProviders || [], s.geminiModels || [null, null, null], s, systemPrompt, text,
+      { basePrompt }
     );
     clipboard.writeText(result);
     store.set("lastAction", action);
 
     const today = todayDate();
-    const fresh = purgeOldLog(store.get("historyLog") || []);
+    const fresh = purgeOldLog(encStore.get("historyLog") || []);
     fresh.push({
       timestamp: Date.now(), date: today, source: "desktop",
       action, provider: usedProvider, model: usedModel,
       inputLen: text.length, outputLen: result.length
     });
-    store.set("historyLog", fresh.slice(-200));
+    encStore.set("historyLog", fresh.slice(-200));
 
-    const historyFull = store.get("historyFull") || [];
+    const historyFull = encStore.get("historyFull") || [];
     const cost = estimateCost(usedModel, text, [result]);
     historyFull.push({
       id: uid(),
@@ -410,7 +469,7 @@ async function quickAction(action) {
       outputs: [result.slice(0, 5000)],
       ...cost
     });
-    store.set("historyFull", historyFull.slice(-500));
+    encStore.set("historyFull", historyFull.slice(-500));
 
     updateTrayTooltip();
     new Notification({ title: "Thought Tidy", body: "Done — result copied to clipboard." }).show();
@@ -431,25 +490,26 @@ async function quickCustomAction(idx) {
     const s         = encStore.store;
     const cp        = (s.customPrompts || [])[idx];
     if (!cp) return;
-    let systemPrompt = buildPromptWithProfile(cp.prompt, s);
     const grammarBlock = buildGrammarInstructions(s.grammarFilters);
-    if (grammarBlock) systemPrompt += "\n\n" + grammarBlock;
+    const basePrompt   = grammarBlock ? cp.prompt + "\n\n" + grammarBlock : cp.prompt;
+    const systemPrompt = buildPromptWithProfile(basePrompt, s);
     const { result, usedProvider, usedModel } = await callAIWithFallback(
-      s.configuredProviders || [], s.geminiModels || [null, null, null], s, systemPrompt, text
+      s.configuredProviders || [], s.geminiModels || [null, null, null], s, systemPrompt, text,
+      { basePrompt }
     );
     clipboard.writeText(result);
     store.set("lastAction", `custom-${idx}`);
 
     const today = todayDate();
-    const fresh = purgeOldLog(store.get("historyLog") || []);
+    const fresh = purgeOldLog(encStore.get("historyLog") || []);
     fresh.push({
       timestamp: Date.now(), date: today, source: "desktop",
       action: `custom-${idx}`, provider: usedProvider, model: usedModel,
       inputLen: text.length, outputLen: result.length
     });
-    store.set("historyLog", fresh.slice(-200));
+    encStore.set("historyLog", fresh.slice(-200));
 
-    const historyFull = store.get("historyFull") || [];
+    const historyFull = encStore.get("historyFull") || [];
     const cost = estimateCost(usedModel, text, [result]);
     historyFull.push({
       id: uid(),
@@ -458,7 +518,7 @@ async function quickCustomAction(idx) {
       systemPrompt: systemPrompt.slice(0, 2000),
       inputText: text.slice(0, 5000), outputs: [result.slice(0, 5000)], ...cost
     });
-    store.set("historyFull", historyFull.slice(-500));
+    encStore.set("historyFull", historyFull.slice(-500));
 
     updateTrayTooltip();
     new Notification({ title: "Thought Tidy", body: "Done — result copied to clipboard." }).show();
@@ -471,7 +531,7 @@ async function quickCustomAction(idx) {
 
 function updateTrayTooltip() {
   if (!tray) return;
-  const count = purgeOldLog(store.get("historyLog") || []).length;
+  const count = purgeOldLog((encStore || store).get("historyLog") || []).length;
   tray.setToolTip(count > 0 ? `Thought Tidy · ${count} fix${count === 1 ? "" : "es"} today` : "Thought Tidy");
   tray.setContextMenu(buildTrayMenu());
 }
@@ -554,7 +614,7 @@ app.whenReady().then(() => {
   ipcMain.handle("get-cipher-key",  ()        => _readCipherKey());
   ipcMain.handle("rebuild-tray",    ()        => updateTrayTooltip());
 
-  const backupHandlers = makeBackupHandlers(dialog, fs);
+  const backupHandlers = makeBackupHandlers(dialog, fs, path);
   ipcMain.handle("save-backup", backupHandlers.saveBackup);
   ipcMain.handle("open-backup", backupHandlers.openBackup);
 
@@ -643,7 +703,7 @@ app.whenReady().then(() => {
   createTray();
   updateTrayTooltip();
   // Purge stale log entries from previous days on launch
-  store.set("historyLog", purgeOldLog(store.get("historyLog") || []));
+  encStore.set("historyLog", purgeOldLog(encStore.get("historyLog") || []));
 
   // Global shortcut: Ctrl+Shift+Space  (Cmd+Shift+Space on Mac)
   const shortcut = process.platform === "darwin"

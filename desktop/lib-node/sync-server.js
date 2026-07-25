@@ -17,15 +17,41 @@ const SYNC_KEYS = new Set([
   "licenseEmail", "licenseKey"
 ]);
 
+// Covers AWS (169.254.169.254), Azure (168.63.129.16), GCP hostname, Alibaba (100.100.100.200),
+// AWS IPv6 IMDS (fd00:ec2::), IPv6 link-local (fe80::), and IPv6 loopback (::1).
+// Brackets are stripped from URL.hostname before testing so [::1] and ::1 both match.
+const _SYNC_SSRF_BLOCKED = /^(::1$|0\.0\.0\.0$|169\.254\.\d+\.\d+|100\.100\.100\.200$|168\.63\.129\.16$|metadata\.google\.internal$|fe80:|fd00:ec2:)/i;
+
+function _isValidProvider(p) {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return false;
+  if (typeof p.id !== "string" || !p.id) return false;
+  if ("baseUrl" in p) {
+    if (typeof p.baseUrl !== "string") return false;
+    if (p.baseUrl) {
+      try {
+        const u = new URL(p.baseUrl);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+        const _h = u.hostname.replace(/^\[|]$/g, ""); // strip IPv6 brackets
+        if (_SYNC_SSRF_BLOCKED.test(_h)) return false;
+      } catch { return false; }
+    }
+  }
+  if ("apiKey" in p && p.apiKey !== null && typeof p.apiKey !== "string") return false;
+  if ("model"  in p && typeof p.model  !== "string") return false;
+  return true;
+}
+
 // Validates that a value has the correct type for its sync key.
 // Using a switch keeps this as one testable function instead of 16 arrow functions.
 function validateSyncValue(key, val) {
   switch (key) {
     case "configuredProviders":
+      return Array.isArray(val) && val.length <= 100 && val.every(_isValidProvider);
     case "geminiModels":
+      return Array.isArray(val) && val.length <= 100;
     case "customPrompts":
     case "actionSettings":
-      return Array.isArray(val);
+      return Array.isArray(val) && val.length <= 200;
     case "variants":
       return typeof val === "number" && Number.isFinite(val);
     case "profileEnabled":
@@ -38,6 +64,9 @@ function validateSyncValue(key, val) {
 // encStore must implement: .get(key) → decrypted value, .set(key, val) → encrypts sensitive values
 // port defaults to PORT (47391); pass 0 in tests to get an OS-assigned free port
 function startSyncServer(encStore, port = PORT) {
+  // First extension origin to call /ping becomes the only one that can receive the session
+  // token, preventing a rogue installed extension from stealing it on a subsequent call.
+  let _authorizedExtensionOrigin = null;
   const server = http.createServer((req, res) => {
     // Reflect extension origins; anything else gets 127.0.0.1 (won't match web page origins)
     const origin = req.headers["origin"] || "";
@@ -54,11 +83,22 @@ function startSyncServer(encStore, port = PORT) {
       return;
     }
 
-    // /ping — public, no token needed; returns session token + syncMeta for timestamp comparison
+    // /ping — public, no token needed; returns syncMeta for timestamp comparison.
+    // Session token is only returned to the first extension origin that calls /ping.
+    // Subsequent callers from a different extension ID receive null, preventing a
+    // rogue installed extension from stealing the token after the real one connected.
     if (req.url === "/ping" && req.method === "GET") {
+      const pingOrigin = req.headers["origin"] || "";
+      const isExtension = /^(chrome-extension|moz-extension):\/\//.test(pingOrigin);
       const syncMeta = encStore.get("syncMeta") || null;
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ token: SESSION_TOKEN, syncMeta }));
+      if (isExtension) {
+        if (!_authorizedExtensionOrigin) _authorizedExtensionOrigin = pingOrigin;
+        const token = pingOrigin === _authorizedExtensionOrigin ? SESSION_TOKEN : null;
+        res.end(JSON.stringify({ token, syncMeta }));
+      } else {
+        res.end(JSON.stringify({ token: null, syncMeta }));
+      }
       return;
     }
 
@@ -94,9 +134,11 @@ function startSyncServer(encStore, port = PORT) {
     // POST /settings — receives plaintext settings from extension, stores encrypted via encStore.set
     if (req.url === "/settings" && req.method === "POST") {
       let body = "";
+      let bodyBytes = 0;
       req.on("data", chunk => {
+        bodyBytes += chunk.length; // chunk is a Buffer — .length is bytes, not chars
+        if (bodyBytes > 1_000_000) { req.destroy(); return; }
         body += chunk;
-        if (body.length > 1_000_000) req.destroy();
       });
       req.on("end", () => {
         try {
