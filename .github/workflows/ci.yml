@@ -7,9 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  # ── Extension tests + Chrome/Firefox builds ───────────────────────────────
-  extensions:
-    name: Extensions (Chrome + Firefox)
+  # ── 1. Extension tests ────────────────────────────────────────────────────
+  test-extensions:
+    name: Test extensions
     runs-on: ubuntu-latest
 
     steps:
@@ -40,7 +40,52 @@ jobs:
           path: coverage/
           retention-days: 14
 
-      # Fallback env file (all-zeros) so build.js doesn't abort on forks
+  # ── 2. Desktop tests ──────────────────────────────────────────────────────
+  test-desktop:
+    name: Test desktop
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install desktop dependencies
+        run: npm ci
+        working-directory: desktop
+
+      - name: Run desktop tests with coverage
+        run: npm test -- --coverage
+        working-directory: desktop
+
+      - name: Upload desktop coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-desktop-${{ github.sha }}
+          path: desktop/coverage/
+          retention-days: 14
+
+  # ── 3. Build Chrome + Firefox (only after tests pass) ────────────────────
+  build-extensions:
+    name: Build extensions
+    needs: [test-extensions]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fallback env file (all-zeros) so build.js doesn't abort on forks without the secret
       - name: Write fallback env file
         run: |
           mkdir -p ETC
@@ -92,10 +137,30 @@ jobs:
           path: dist/chrome/
           retention-days: 14
 
-  # ── Desktop tests + Windows installer ────────────────────────────────────
-  desktop:
-    name: Desktop (Windows)
-    runs-on: windows-latest
+  # ── 4. Full release-quality desktop builds (only after tests pass) ────────
+  build-desktop:
+    name: Build desktop (${{ matrix.os-label }})
+    needs: [test-desktop]
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            os-label: Windows
+            script: dist:win
+            glob: "desktop/dist-build/*.exe"
+          - os: macos-latest
+            os-label: macOS
+            script: dist:mac
+            glob: "desktop/dist-build/*.dmg"
+          - os: ubuntu-latest
+            os-label: Linux
+            script: dist:linux
+            glob: |
+              desktop/dist-build/*.deb
+              desktop/dist-build/*.AppImage
 
     steps:
       - uses: actions/checkout@v6
@@ -104,28 +169,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install desktop dependencies
-        run: npm ci
-        working-directory: desktop
-
-      - name: Run desktop tests with coverage
-        run: npm test -- --coverage
-        working-directory: desktop
-
-      - name: Upload desktop coverage report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-desktop-${{ github.sha }}
-          path: desktop/coverage/
-          retention-days: 14
-
       - name: Stamp build version with commit hash
-        id: ver
         shell: bash
         run: |
           SHA="${GITHUB_SHA:0:8}"
-          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "sha=$SHA" >> $GITHUB_ENV
           node - << 'EOF'
           const fs = require('fs');
           const sha = process.env.GITHUB_SHA.slice(0, 8);
@@ -136,28 +184,37 @@ jobs:
           console.log('Stamped version:', p.version);
           EOF
 
-      # All branches → portable EXE only (fast, no installer)
-      # Full NSIS installer is built only on release tags via release.yml
-      - name: Build portable test EXE
-        run: npm run dist:test
+      - name: Install desktop dependencies
+        run: npm ci
+        working-directory: desktop
+
+      - name: Build desktop installer
+        run: npm run ${{ matrix.script }}
         working-directory: desktop
         env:
           REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
-      - name: Zip portable EXE
-        shell: pwsh
+      - name: Validate installer artifact
+        shell: bash
         run: |
-          $sha = "${{ steps.ver.outputs.sha }}"
-          $branch = "${{ github.ref_name }}" -replace '[^a-zA-Z0-9._-]', '-'
-          $exe = Get-ChildItem -Path "desktop/dist-build-test" -Filter "*.exe" | Select-Object -First 1
-          if (-not $exe) { throw "No .exe found in desktop/dist-build-test" }
-          Compress-Archive -Path $exe.FullName -DestinationPath "thought-tidy-desktop-$branch-$sha.zip"
-          Write-Host "Zipped: $($exe.Name) -> thought-tidy-desktop-$branch-$sha.zip"
-          echo "ZIPNAME=thought-tidy-desktop-$branch-$sha" >> $env:GITHUB_ENV
+          shopt -s nullglob
+          files=(desktop/dist-build/*.exe desktop/dist-build/*.dmg desktop/dist-build/*.deb desktop/dist-build/*.AppImage)
+          found=()
+          for f in "${files[@]}"; do [ -f "$f" ] && found+=("$f"); done
+          if [ ${#found[@]} -eq 0 ]; then
+            echo "ERROR: No installer found in desktop/dist-build/"; exit 1
+          fi
+          for f in "${found[@]}"; do
+            mb=$(( $(wc -c < "$f") / 1048576 ))
+            echo "Artifact: $(basename "$f") (${mb} MB)"
+            if [ "$mb" -lt 30 ]; then
+              echo "ERROR: $(basename "$f") is only ${mb}MB -- may be broken"; exit 1
+            fi
+          done
 
-      - name: Upload portable EXE
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.ZIPNAME }}
-          path: ${{ env.ZIPNAME }}.zip
+          name: thought-tidy-${{ matrix.os-label }}-${{ github.ref_name }}-${{ env.sha }}
+          path: ${{ matrix.glob }}
           retention-days: 14
