@@ -268,8 +268,8 @@
               <span class="wp-sub">Local AI · OpenAI-compatible</span>
             </button>
             <button class="wizard-provider-btn" data-provider="hosted">
-              <span class="wp-name">AI Application Assistance <span class="pro-badge-sm">PRO</span></span>
-              <span class="wp-sub">Hosted AI · No API key needed</span>
+              <span class="wp-name">Thought Tidy AI <span class="pro-badge-sm">PRO</span></span>
+              <span class="wp-sub">Hosted · Subscription required</span>
             </button>
           </div>
           <div class="wizard-footer">
@@ -281,6 +281,17 @@
           <div class="wizard-step2-header">
             <h3 id="wizard-provider-title"></h3>
             <button id="wizard-guide-btn" class="wizard-guide-btn" type="button" style="display:none">Setup Guide ↗</button>
+          </div>
+          <!-- Hosted AI: email + info shown above the license key field -->
+          <div id="wizard-hosted-extra" style="display:none">
+            <div class="field" style="margin-bottom:12px">
+              <label for="wizard-hosted-email">Account Email</label>
+              <input type="email" id="wizard-hosted-email" placeholder="you@example.com" autocomplete="off" maxlength="256" style="width:100%;box-sizing:border-box;font-size:1.1em;padding:8px 10px;">
+              <p class="hint" style="margin-top:4px">Email used for your Gumroad purchase</p>
+            </div>
+            <p class="hint" style="margin-bottom:10px; color:#f9e2af">
+              Limited availability. <a id="wizard-hosted-subscribe-link" href="#" class="api-link" style="cursor:pointer">Subscribe on Gumroad ↗</a>
+            </p>
           </div>
           <div id="wizard-api-key-row" class="field">
             <label>
@@ -315,17 +326,6 @@
                 <select id="wizard-gemini-model-3" disabled><option value="">— test key first —</option></select>
               </div>
             </div>
-          </div>
-          <!-- Hosted AI: email + info shown above the license key field -->
-          <div id="wizard-hosted-extra" style="display:none">
-            <div class="field" style="margin-bottom:12px">
-              <label for="wizard-hosted-email">Account Email</label>
-              <input type="email" id="wizard-hosted-email" placeholder="you@example.com" autocomplete="off" maxlength="256">
-              <p class="hint" style="margin-top:4px">Email used for your Gumroad purchase</p>
-            </div>
-            <p class="hint" style="margin-bottom:10px; color:#f9e2af">
-              Limited availability. <a id="wizard-hosted-subscribe-link" href="#" class="api-link" style="cursor:pointer">Subscribe on Gumroad ↗</a>
-            </p>
           </div>
           <!-- Ollama: base URL input (shown only for Ollama) -->
           <div id="wizard-ollama-extra" style="display:none">

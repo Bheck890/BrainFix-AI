@@ -7,9 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  # ── Extension tests + Firefox build ───────────────────────────────────────
+  # ── Extension tests + Chrome/Firefox builds ───────────────────────────────
   extensions:
-    name: Extensions (Firefox)
+    name: Extensions (Chrome + Firefox)
     runs-on: ubuntu-latest
 
     steps:
@@ -26,10 +26,10 @@ jobs:
       - name: Run tests with coverage
         run: npm test -- --coverage
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
-          COPILOT_TOKEN:  ${{ secrets.COPILOT_TOKEN }}
+          OPENAI_API_KEY:   ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY:   ${{ secrets.GOOGLE_API_KEY }}
+          CLAUDE_API_KEY:   ${{ secrets.CLAUDE_API_KEY }}
+          COPILOT_TOKEN:    ${{ secrets.COPILOT_TOKEN }}
           REQUEST_SIGN_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
 
       - name: Upload extension coverage report
@@ -40,13 +40,16 @@ jobs:
           path: coverage/
           retention-days: 14
 
-      - name: Write license env file
+      # Fallback env file (all-zeros) so build.js doesn't abort on forks
+      - name: Write fallback env file
         run: |
           mkdir -p ETC
           echo "REQUEST_SIGN_KEY=0000000000000000000000000000000000000000000000000000000000000000" > ETC/brainfix-ai.env
 
       - name: Build Firefox extension
         run: npm run build:firefox
+        env:
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
       - name: Validate Firefox manifest
         run: |
@@ -59,18 +62,7 @@ jobs:
             console.log('Firefox manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
           "
 
-      # main → labelled as test artifact
-      - name: Upload Firefox zip (main)
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
-        with:
-          name: thought-tidy-firefox-TEST-${{ github.sha }}
-          path: dist/firefox/
-          retention-days: 14
-
-      # non-main → production artifact labelled with branch name
-      - name: Upload Firefox zip (branch)
-        if: github.ref != 'refs/heads/main'
+      - name: Upload Firefox artifact
         uses: actions/upload-artifact@v7
         with:
           name: thought-tidy-firefox-${{ github.ref_name }}-${{ github.sha }}
@@ -79,6 +71,8 @@ jobs:
 
       - name: Build Chrome extension
         run: npm run build:chrome
+        env:
+          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
       - name: Validate Chrome manifest
         run: |
@@ -91,25 +85,14 @@ jobs:
             console.log('Chrome manifest OK  version=' + m.manifest_version + '  permissions=' + (m.permissions||[]).join(','));
           "
 
-      # main → labelled as test artifact
-      - name: Upload Chrome zip (main)
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
-        with:
-          name: thought-tidy-chrome-TEST-${{ github.sha }}
-          path: dist/chrome/
-          retention-days: 14
-
-      # non-main → production artifact labelled with branch name
-      - name: Upload Chrome zip (branch)
-        if: github.ref != 'refs/heads/main'
+      - name: Upload Chrome artifact
         uses: actions/upload-artifact@v7
         with:
           name: thought-tidy-chrome-${{ github.ref_name }}-${{ github.sha }}
           path: dist/chrome/
           retention-days: 14
 
-  # ── Desktop tests + Windows build ─────────────────────────────────────────
+  # ── Desktop tests + Windows installer ────────────────────────────────────
   desktop:
     name: Desktop (Windows)
     runs-on: windows-latest
@@ -153,44 +136,28 @@ jobs:
           console.log('Stamped version:', p.version);
           EOF
 
-      # main → TEST ONLY portable EXE (no installer)
-      - name: Build TEST ONLY portable EXE
-        if: github.ref == 'refs/heads/main'
+      # All branches → portable EXE only (fast, no installer)
+      # Full NSIS installer is built only on release tags via release.yml
+      - name: Build portable test EXE
         run: npm run dist:test
         working-directory: desktop
         env:
           REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
 
-      - name: Zip TEST ONLY EXE
-        if: github.ref == 'refs/heads/main'
+      - name: Zip portable EXE
         shell: pwsh
         run: |
           $sha = "${{ steps.ver.outputs.sha }}"
+          $branch = "${{ github.ref_name }}" -replace '[^a-zA-Z0-9._-]', '-'
           $exe = Get-ChildItem -Path "desktop/dist-build-test" -Filter "*.exe" | Select-Object -First 1
           if (-not $exe) { throw "No .exe found in desktop/dist-build-test" }
-          Compress-Archive -Path $exe.FullName -DestinationPath "thought-tidy-TEST-ONLY-$sha.zip"
-          Write-Host "Zipped: $($exe.Name) -> thought-tidy-TEST-ONLY-$sha.zip"
+          Compress-Archive -Path $exe.FullName -DestinationPath "thought-tidy-desktop-$branch-$sha.zip"
+          Write-Host "Zipped: $($exe.Name) -> thought-tidy-desktop-$branch-$sha.zip"
+          echo "ZIPNAME=thought-tidy-desktop-$branch-$sha" >> $env:GITHUB_ENV
 
-      - name: Upload TEST ONLY zip
-        if: github.ref == 'refs/heads/main'
+      - name: Upload portable EXE
         uses: actions/upload-artifact@v7
         with:
-          name: thought-tidy-TEST-ONLY-${{ steps.ver.outputs.sha }}
-          path: thought-tidy-TEST-ONLY-${{ steps.ver.outputs.sha }}.zip
-          retention-days: 14
-
-      # non-main → production NSIS installer
-      - name: Build production Windows installer
-        if: github.ref != 'refs/heads/main'
-        run: npm run dist:win
-        working-directory: desktop
-        env:
-          REQUEST_SIGN_KEY: ${{ secrets.REQUEST_SIGN_KEY }}
-
-      - name: Upload production installer
-        if: github.ref != 'refs/heads/main'
-        uses: actions/upload-artifact@v7
-        with:
-          name: thought-tidy-installer-${{ github.ref_name }}-${{ steps.ver.outputs.sha }}
-          path: desktop/dist-build/*.exe
+          name: ${{ env.ZIPNAME }}
+          path: ${{ env.ZIPNAME }}.zip
           retention-days: 14
