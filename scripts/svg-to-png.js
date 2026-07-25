@@ -5,6 +5,7 @@ const puppeteer = require('puppeteer');
 const path = require('path');
 
 const FILES = [
+  { name: 'img-thumbnail',     w: 600,  h: 600 },
   { name: 'img-hero',          w: 1200, h: 630 },
   { name: 'img-how-it-works',  w: 1200, h: 420 },
   { name: 'img-no-setup',      w: 1200, h: 480 },
