@@ -109,7 +109,7 @@ describe("checkAndStoreUpdate", () => {
     });
     await ctx.checkAndStoreUpdate();
     expect(ctx.browser.storage.local.set).toHaveBeenCalledWith({
-      updateAvailable: { version: "2.0.0", url: "https://github.com/northpandalabs/Thought-Tidy/releases/latest" },
+      updateAvailable: { version: "2.0.0", url: "https://thoughttidy.app/download" },
     });
   });
 

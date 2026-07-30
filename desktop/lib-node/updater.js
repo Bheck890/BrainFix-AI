@@ -7,7 +7,7 @@ const https = require('https');
 const { app } = require('electron');
 
 const DOWNLOADS_URL  = 'https://raw.githubusercontent.com/northpandalabs/Thought-Tidy/refs/heads/main/legal/downloads.json';
-const RELEASES_PAGE  = 'https://github.com/northpandalabs/Thought-Tidy/releases/latest';
+const RELEASES_PAGE  = 'https://thoughttidy.app/download';
 
 function fetchDownloadsJson() {
   return new Promise((resolve, reject) => {
@@ -52,12 +52,8 @@ async function checkNow(store) {
     ? data.version : null;
   if (!latest) return null;
 
-  const github_url = typeof data.github_url === 'string' &&
-    /^https:\/\/github\.com\/northpandalabs\/Thought-Tidy$/.test(data.github_url)
-    ? data.github_url : null;
-
   const current   = app.getVersion();
-  const updateUrl = github_url ? github_url + '/releases/latest' : RELEASES_PAGE;
+  const updateUrl = RELEASES_PAGE;
 
   if (semverGt(latest, current)) {
     const upd = { version: latest, url: updateUrl };

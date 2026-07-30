@@ -292,10 +292,10 @@ async function init() {
     const notice = document.getElementById("update-notice");
     const link   = document.getElementById("update-link");
     if (notice && link) {
-      const safeUrl = typeof updateAvailable.url === "string" && updateAvailable.url.startsWith("https://github.com/")
+      const safeUrl = typeof updateAvailable.url === "string" && updateAvailable.url.startsWith("https://thoughttidy.app/")
         ? updateAvailable.url : null;
       if (!safeUrl) return;
-      link.textContent = `Version ${updateAvailable.version} available. Download from GitHub ↗`;
+      link.textContent = `Version ${updateAvailable.version} available. Download update ↗`;
       link.href = safeUrl; notice.style.display = "block";
     }
   }
