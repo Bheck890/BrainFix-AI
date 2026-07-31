@@ -574,6 +574,12 @@ describe("isRetriable", () => {
     expect(isRetriable("Invalid API key provided")).toBe(false);
   });
 
+  test("5xx Server Error message is retriable", () => {
+    expect(isRetriable("GitHub Models: Server Error")).toBe(true);
+    expect(isRetriable("HTTP 500 Internal Server Error")).toBe(true);
+    expect(isRetriable("HTTP 502 Bad Gateway")).toBe(true);
+  });
+
   test("empty/undefined message returns false", () => {
     expect(isRetriable("")).toBe(false);
     expect(isRetriable(undefined)).toBe(false);
